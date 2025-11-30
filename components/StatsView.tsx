@@ -103,29 +103,36 @@ const StatsView: React.FC<StatsViewProps> = ({ project }) => {
       {/* Card 1: Chart */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 flex flex-col items-center justify-center">
         <h3 className="text-stone-400 font-bold uppercase tracking-wider text-xs mb-4 w-full">統計圖表</h3>
-        <div className="w-full h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={currentData}
-                cx="50%"
-                cy="50%"
-                innerRadius={50}
-                outerRadius={70}
-                paddingAngle={5}
-                dataKey="value"
-                label={renderLabel}
-              >
-                {currentData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip 
-                formatter={(value: number) => formatCurrency(value, project.currency)}
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+        {/* Fix: Added min-h-[256px] (h-64) to ensure explicit height exists before rendering */}
+        <div className="w-full h-64 min-h-[256px]">
+          {currentData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
+              <PieChart>
+                <Pie
+                  data={currentData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={70}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={renderLabel}
+                >
+                  {currentData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  formatter={(value: number) => formatCurrency(value, project.currency)}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-stone-300 text-sm">
+              尚無資料
+            </div>
+          )}
         </div>
       </div>
 
