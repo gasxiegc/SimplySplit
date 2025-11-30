@@ -1,0 +1,17 @@
+
+{
+  "name": "Simply Split",
+  "short_name": "Simply Split",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fcfaf5",
+  "theme_color": "#fcfaf5",
+  "description": "A Zen-inspired expense splitting app.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    }
+  ]
+}
