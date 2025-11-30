@@ -1,16 +1,18 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Project, Expense, ThemeType } from './types';
 import { DataService } from './services/dataService';
 import ExpenseList from './components/ExpenseList';
 import ExpenseModal from './components/ExpenseModal';
-import SettlementView from './components/SettlementView';
-import StatsView from './components/StatsView';
 import LoginScreen from './components/LoginScreen';
 import ProjectList from './components/ProjectList';
 import Modal from './components/ui/Modal';
 import { Plus, List, PieChart, RefreshCw, Share2, ArrowLeft, Edit2, Copy, Check } from 'lucide-react';
 import { THEMES, PRIMARY_CURRENCIES, SECONDARY_CURRENCIES } from './constants';
+
+// Lazy load heavy components for better build optimization
+const SettlementView = React.lazy(() => import('./components/SettlementView'));
+const StatsView = React.lazy(() => import('./components/StatsView'));
 
 const App: React.FC = () => {
   const [view, setView] = useState<'login' | 'projects' | 'dashboard'>('login');
@@ -46,7 +48,6 @@ const App: React.FC = () => {
         setTheme('default');
       }
       
-      // Try auto-login (check session)
       try {
          const user = await DataService.login('auto');
          if (user) {
@@ -86,7 +87,6 @@ const App: React.FC = () => {
 
   const handleLogin = async () => {
     setLoading(true);
-    // DataService.login is called inside LoginScreen, so here we just fetch data
     const data = await DataService.getProjects();
     setProjects(data);
     setView('projects');
@@ -96,6 +96,7 @@ const App: React.FC = () => {
   const handleImportDemo = async () => {
     setLoading(true);
     try {
+        // User should be logged in anonymously by LoginScreen before calling this
         const demo = await DataService.createDemoProject();
         setProjects(prev => [demo, ...prev]);
         setCurrentProject(demo);
@@ -108,8 +109,6 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-     // Optional: await supabase.auth.signOut();
-     // For this app flow, we just reset view
     setView('login');
     setCurrentProject(null);
   };
@@ -132,12 +131,10 @@ const App: React.FC = () => {
   };
 
   const handleUpdateProject = async (updated: Project) => {
-    // Optimistic update
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (currentProject?.id === updated.id) setCurrentProject(updated);
     
     await DataService.updateProject(updated);
-    // Re-fetch to confirm sync/get fresh data if needed
     const refreshed = await DataService.getProjects();
     setProjects(refreshed);
   };
@@ -197,7 +194,7 @@ const App: React.FC = () => {
     if (!currentProject) return;
 
     const expenseData: Expense = {
-        id: id || `e_${Date.now()}`, // Temp ID if new
+        id: id || `e_${Date.now()}`,
         amount,
         description,
         payerId,
@@ -209,7 +206,6 @@ const App: React.FC = () => {
         receiptImage
     };
 
-    // Optimistic UI Update
     let updatedExpenses = [...currentProject.expenses];
     if (id) {
         updatedExpenses = updatedExpenses.map(e => e.id === id ? expenseData : e);
@@ -221,10 +217,8 @@ const App: React.FC = () => {
     setProjects(prev => prev.map(p => p.id === currentProject.id ? optimisticProject : p));
     setEditingExpense(null);
 
-    // Sync to DB
     const realId = await DataService.upsertExpense(currentProject.id, expenseData);
     
-    // Replace temp ID with real ID in background
     if (!id) {
        const fixedExpenses = updatedExpenses.map(e => e.id === expenseData.id ? { ...e, id: realId } : e);
        const fixedProject = { ...currentProject, expenses: fixedExpenses };
@@ -236,7 +230,6 @@ const App: React.FC = () => {
   const handleDeleteExpense = async (id: string) => {
     if (!currentProject) return;
     
-    // Optimistic
     const updatedProject = {
       ...currentProject,
       expenses: currentProject.expenses.filter(e => e.id !== id)
@@ -244,12 +237,11 @@ const App: React.FC = () => {
     setCurrentProject(updatedProject);
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
 
-    // Sync
     await DataService.deleteExpense(id);
   };
 
   const ShareOptions = ({ project }: { project: Project }) => {
-    const link = `https://torisplit.app/join/${project.inviteCode}`; // Placeholder domain
+    const link = `https://torisplit.app/join/${project.inviteCode}`;
     const [copied, setCopied] = useState(false);
 
     const copyToClipboard = () => {
@@ -342,19 +334,21 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="px-4 py-6 max-w-3xl mx-auto min-h-[80vh]">
-        {activeTab === 'expenses' && (
-          <ExpenseList 
-            project={currentProject} 
-            onDelete={handleDeleteExpense} 
-            onEdit={(e) => { setEditingExpense(e); setIsAddModalOpen(true); }}
-          />
-        )}
-        {activeTab === 'stats' && (
-          <StatsView project={currentProject} />
-        )}
-        {activeTab === 'settle' && (
-          <SettlementView project={currentProject} />
-        )}
+        <Suspense fallback={<div className="flex justify-center py-10"><div className="w-8 h-8 border-2 border-stone-200 border-t-stone-600 rounded-full animate-spin"></div></div>}>
+          {activeTab === 'expenses' && (
+            <ExpenseList 
+              project={currentProject} 
+              onDelete={handleDeleteExpense} 
+              onEdit={(e) => { setEditingExpense(e); setIsAddModalOpen(true); }}
+            />
+          )}
+          {activeTab === 'stats' && (
+            <StatsView project={currentProject} />
+          )}
+          {activeTab === 'settle' && (
+            <SettlementView project={currentProject} />
+          )}
+        </Suspense>
       </main>
 
       {/* Add Button (Floating) */}

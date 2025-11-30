@@ -31,25 +31,31 @@ const mapExpense = (e: any): Expense => ({
 export const DataService = {
   // Trigger OAuth Login (Google / LINE)
   loginWithOAuth: async (provider: 'google' | 'line'): Promise<void> => {
-    // Add options to ensure smooth account selection
+    // Simplified options to maximize compatibility and prevent "validation_failed"
+    // Note: The Redirect URL must be whitelisted in your Supabase Dashboard > Auth > URL Configuration
     const options: any = {
         redirectTo: window.location.origin,
+        skipBrowserRedirect: false, // Explicitly state we want a redirect
     };
-
-    // Force Google to show account picker (helps if user has multiple accounts)
+    
+    // Only add specific params if absolutely necessary. Removed 'prompt' to avoid loops.
     if (provider === 'google') {
         options.queryParams = {
-            prompt: 'consent',
-            access_type: 'offline'
+            access_type: 'offline', // Requests refresh token
         };
     }
+    
+    console.log(`[OAuth] Attempting login with ${provider} redirecting to ${options.redirectTo}`);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: provider,
       options: options,
     });
     
-    if (error) throw error;
+    if (error) {
+        console.error('[OAuth] Error:', error);
+        throw error;
+    }
   },
 
   // Authentication Router
@@ -67,7 +73,6 @@ export const DataService = {
         if (provider === 'email' && email) {
             // === EMAIL SYNC STRATEGY ===
             // 1. Try to Sign Up (Auto Create)
-            // We use a fixed password to simulate "Email is the ID" behavior.
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                 email: email,
                 password: DEFAULT_SYNC_PASSWORD,
@@ -76,7 +81,6 @@ export const DataService = {
 
             if (signUpError) {
                 // 2. If user already exists, Fallback to Sign In (Sync)
-                // Check for various "User exists" error codes from Supabase
                 if (signUpError.message?.includes('already registered') || 
                     signUpError.code === 'user_already_exists' || 
                     (signUpError as any).status === 400 || 
@@ -88,9 +92,7 @@ export const DataService = {
                      });
                      
                      if (signInError) {
-                        // DEBUG CHECK: If sign in fails with default password, it implies:
-                        // A) The user registered with a different password (manually)
-                        // B) The user registered via OAuth (Google/LINE) and has NO password set
+                        // DEBUG CHECK: If sign in fails, it implies user has a different password (manually set or OAuth)
                         console.error("Sync Login failed:", signInError);
                         throw new Error("此 Email 已被註冊。如果您之前使用 Google 或 LINE 登入，請點擊下方的按鈕進行登入。");
                      }
@@ -101,9 +103,13 @@ export const DataService = {
                 }
             } else {
                 // Sign Up Successful
-                // Check if session is established. If "Confirm Email" is ON in Supabase, session might be null.
-                if (!signUpData.session && !signUpData.user) {
-                     throw new Error("註冊成功但需驗證。請至 Supabase 關閉 Confirm Email 以啟用自動同步登入。");
+                // CRITICAL CHECK: If 'Confirm Email' is enabled in Supabase, session will be null.
+                if (!signUpData.session) {
+                     // Check if user object exists but no session
+                     if (signUpData.user) {
+                         throw new Error("系統已發送驗證信至您的信箱。請驗證後再登入，或在 Supabase Dashboard 關閉 'Confirm Email'。");
+                     }
+                     throw new Error("註冊成功但無法建立工作階段。");
                 }
                 userId = signUpData.user?.id;
             }
@@ -142,8 +148,6 @@ export const DataService = {
       // 3. Upsert Profile (Sync Name & Avatar)
       const timestamp = new Date().toISOString();
       
-      // Determine metadata to sync (Prioritize input, fallback to OAuth metadata)
-      // NOTE: We do this even for 'auto' login to ensure profile is fresh from OAuth provider updates
       let finalName = name;
       let finalAvatar = null;
       let finalEmail = email || session?.user?.email;
@@ -155,7 +159,6 @@ export const DataService = {
           finalAvatar = meta.avatar_url || meta.picture || meta.avatar;
       }
 
-      // Default fallback
       if (!finalName) finalName = 'User';
 
       const profilePayload: any = {
@@ -165,7 +168,6 @@ export const DataService = {
         updated_at: timestamp
       };
 
-      // Only update avatar if provided (by OAuth)
       if (finalAvatar) {
           profilePayload.custom_avatar = finalAvatar;
       }
@@ -176,15 +178,12 @@ export const DataService = {
          
       if (profileError) {
          console.error('Error updating profile:', profileError);
-         // Don't throw here, let login succeed even if profile sync fails momentarily
       }
       
-      // Fetch latest profile to return complete User object
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
       if (profile) return mapProfile(profile);
       
-      // Fallback if fetch fails
       return { 
           id: userId, 
           name: finalName, 
@@ -223,7 +222,6 @@ export const DataService = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
 
-      // 1. Get Project IDs where current user is a member
       const { data: memberRows, error: memberError } = await supabase
         .from('project_members')
         .select('project_id')
@@ -234,7 +232,6 @@ export const DataService = {
       const projectIds = memberRows.map(r => r.project_id);
       if (projectIds.length === 0) return [];
 
-      // 2. Fetch Projects with their members and expenses
       const { data: projectsData, error: projError } = await supabase
         .from('projects')
         .select(`
@@ -252,7 +249,6 @@ export const DataService = {
         return [];
       }
 
-      // 3. Transform Data to match Typescript Interface
       return projectsData.map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -270,14 +266,13 @@ export const DataService = {
   },
 
   saveProjects: async (projects: Project[]): Promise<void> => {
-     // No-op: Supabase saves individually
+     // No-op
   },
 
   createProject: async (name: string, currency: string, startDate?: number, endDate?: number): Promise<Project | null> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
-      // 1. Insert Project
       const { data: project, error: createError } = await supabase
         .from('projects')
         .insert({
@@ -295,13 +290,11 @@ export const DataService = {
         return null;
       }
 
-      // 2. Add creator as member
       await supabase.from('project_members').insert({
           project_id: project.id,
           user_id: user.id
       });
 
-      // Fetch creator profile
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
 
       return {
@@ -345,7 +338,7 @@ export const DataService = {
       if (expense.id.startsWith('e_')) {
          const { data, error } = await supabase.from('expenses').insert(payload).select().single();
          if(error) throw error;
-         return data.id; // Return real UUID
+         return data.id; 
       } else {
          const { error } = await supabase.from('expenses').update(payload).eq('id', expense.id);
          if(error) throw error;
