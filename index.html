@@ -3,8 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
-    <!-- Added ID for easier Javascript access -->
-    <link rel="apple-touch-icon" id="apple-touch-icon" href="icon.svg" />
+    <!-- NOTE: We do NOT include a static apple-touch-icon link here pointing to SVG.
+         iOS does not support SVG icons and may cache the failure (showing the default "S" icon).
+         Instead, we inject the link tag via JavaScript once the PNG is fully generated. -->
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#fcfaf5" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -50,10 +51,10 @@
     </script>
     <script>
       // iOS Icon Fix (Immediate Execution)
-      // We inline the SVG data and convert it to PNG immediately to ensure
-      // it's ready when the user taps "Add to Home Screen".
       (function() {
-        var svgSource = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#4a403c"/><g transform="translate(256, 256) scale(2.2)"><g transform="translate(-50, -50)"><path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g></g></svg>';
+        // FIXED: Added width="512" height="512" to the SVG tag. 
+        // Without explicit dimensions, canvas.drawImage often fails to render SVGs on some browsers.
+        var svgSource = '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#4a403c"/><g transform="translate(256, 256) scale(2.2)"><g transform="translate(-50, -50)"><path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g></g></svg>';
         
         var img = new Image();
         // Use btoa to base64 encode the SVG string
@@ -61,6 +62,7 @@
         
         img.onload = function() {
           var canvas = document.createElement('canvas');
+          // Standard iOS icon size
           canvas.width = 180;
           canvas.height = 180;
           var ctx = canvas.getContext('2d');
@@ -75,11 +77,12 @@
           // Convert to PNG data URI
           var pngData = canvas.toDataURL('image/png');
           
-          // Update the link tag
-          var link = document.getElementById('apple-touch-icon');
-          if (link) {
-            link.href = pngData;
-          }
+          // Dynamically create the link tag
+          // This ensures iOS only sees the valid PNG link
+          var link = document.createElement('link');
+          link.rel = 'apple-touch-icon';
+          link.href = pngData;
+          document.head.appendChild(link);
         };
       })();
     </script>
