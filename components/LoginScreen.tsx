@@ -50,9 +50,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo }) => {
           console.error(e);
           let msg = e.message || '登入錯誤';
           
-          // Check for specific Supabase error regarding disabled providers
-          if (msg.includes('Unsupported provider') || msg.includes('provider is not enabled')) {
-              msg = `登入失敗：${provider} 登入未啟用。\n\n請至 Supabase Dashboard -> Authentication -> Providers\n啟用 ${provider} 並設定 Client ID / Secret。`;
+          // Specific handling for "validation_failed" or "provider is not enabled"
+          // This occurs when the provider is not enabled in the Supabase Dashboard
+          if (msg.includes('Unsupported provider') || msg.includes('provider is not enabled') || (e.code === 'validation_failed')) {
+              msg = `【 登入功能未啟用 】\n\n您正在使用的 Supabase 專案尚未開啟 ${provider.toUpperCase()} 登入功能。\n\n請前往 Supabase Dashboard -> Authentication -> Providers\n1. 啟用 ${provider}\n2. 設定 Client ID / Secret\n3. 儲存設定後重試。`;
           }
           
           alert(msg);

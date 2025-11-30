@@ -31,14 +31,24 @@ const mapExpense = (e: any): Expense => ({
 export const DataService = {
   // Trigger OAuth Login (Google / LINE)
   loginWithOAuth: async (provider: 'google' | 'line'): Promise<void> => {
-    // Ensure the provider string is passed correctly.
-    // NOTE: If you see "Unsupported provider", you must enable it in Supabase Dashboard.
+    // Add options to ensure smooth account selection
+    const options: any = {
+        redirectTo: window.location.origin,
+    };
+
+    // Force Google to show account picker (helps if user has multiple accounts)
+    if (provider === 'google') {
+        options.queryParams = {
+            prompt: 'consent',
+            access_type: 'offline'
+        };
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: provider,
-      options: {
-        redirectTo: window.location.origin,
-      },
+      options: options,
     });
+    
     if (error) throw error;
   },
 
@@ -78,13 +88,15 @@ export const DataService = {
                      });
                      
                      if (signInError) {
-                        // This happens if the email exists but uses a different password (e.g. manual sign up elsewhere)
-                        console.error("Sign In failed during Sync:", signInError);
-                        throw new Error("此 Email 已註冊且無法自動同步 (密碼錯誤)");
+                        // DEBUG CHECK: If sign in fails with default password, it implies:
+                        // A) The user registered with a different password (manually)
+                        // B) The user registered via OAuth (Google/LINE) and has NO password set
+                        console.error("Sync Login failed:", signInError);
+                        throw new Error("此 Email 已被註冊。如果您之前使用 Google 或 LINE 登入，請點擊下方的按鈕進行登入。");
                      }
                      userId = signInData.user?.id;
                 } else {
-                    // Real error (e.g. Invalid Email)
+                    // Real error (e.g. Invalid Email format)
                     throw signUpError;
                 }
             } else {
@@ -131,15 +143,16 @@ export const DataService = {
       const timestamp = new Date().toISOString();
       
       // Determine metadata to sync (Prioritize input, fallback to OAuth metadata)
+      // NOTE: We do this even for 'auto' login to ensure profile is fresh from OAuth provider updates
       let finalName = name;
       let finalAvatar = null;
       let finalEmail = email || session?.user?.email;
 
-      // If we don't have a name yet (e.g. OAuth login), try to pull from metadata
+      // If we don't have a name yet (e.g. OAuth login or Auto login), try to pull from metadata
       if (!finalName && session?.user?.user_metadata) {
           const meta = session.user.user_metadata;
-          finalName = meta.full_name || meta.name || meta.user_name;
-          finalAvatar = meta.avatar_url || meta.picture;
+          finalName = meta.full_name || meta.name || meta.user_name || meta.displayName;
+          finalAvatar = meta.avatar_url || meta.picture || meta.avatar;
       }
 
       // Default fallback
@@ -152,7 +165,7 @@ export const DataService = {
         updated_at: timestamp
       };
 
-      // Only update avatar if provided by OAuth
+      // Only update avatar if provided (by OAuth)
       if (finalAvatar) {
           profilePayload.custom_avatar = finalAvatar;
       }
@@ -163,6 +176,7 @@ export const DataService = {
          
       if (profileError) {
          console.error('Error updating profile:', profileError);
+         // Don't throw here, let login succeed even if profile sync fails momentarily
       }
       
       // Fetch latest profile to return complete User object
