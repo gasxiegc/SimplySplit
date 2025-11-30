@@ -1,6 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background: Deep Stone -->
   <rect width="512" height="512" rx="128" fill="#4a403c"/>
-  <path d="M256 120C200 120 160 160 160 220C160 280 200 320 256 320C312 320 352 280 352 220C352 160 312 120 256 120Z" fill="#fcfaf5"/>
-  <path d="M256 320L220 380H292L256 320Z" fill="#fcfaf5"/>
-  <circle cx="280" cy="200" r="15" fill="#4a403c"/>
+  
+  <g transform="translate(256, 256) scale(2.8)">
+    <g transform="translate(-50, -50)">
+      <!-- Green Stone (Top Left) -->
+      <path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <!-- White Stone (Bottom Right) -->
+      <path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </g>
+  </g>
 </svg>

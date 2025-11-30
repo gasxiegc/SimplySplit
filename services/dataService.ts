@@ -2,8 +2,8 @@
 import { Project, User } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
-const CURRENT_USER_EMAIL_KEY = 'torisplit_current_user_email';
-const USER_PREF_KEY = 'torisplit_user_pref';
+const CURRENT_USER_EMAIL_KEY = 'simplesplit_current_user_email';
+const USER_PREF_KEY = 'simplesplit_user_pref';
 
 // Helper to get local session email (Supabase Auth is better, but keeping your logic for now)
 const getSessionEmail = () => localStorage.getItem(CURRENT_USER_EMAIL_KEY);
@@ -59,7 +59,7 @@ export const DataService = {
     localStorage.setItem(CURRENT_USER_EMAIL_KEY, user.email);
     
     // Update local cache for getUserProfile synchronous calls
-    localStorage.setItem('torisplit_user_cache_' + user.email, JSON.stringify(user));
+    localStorage.setItem('simplesplit_user_cache_' + user.email, JSON.stringify(user));
 
     return user;
   },
@@ -77,7 +77,7 @@ export const DataService = {
     if (!email) throw new Error("Not logged in");
 
     // Try to get from local cache first (for sync rendering)
-    const cached = localStorage.getItem('torisplit_user_cache_' + email);
+    const cached = localStorage.getItem('simplesplit_user_cache_' + email);
     if (cached) return JSON.parse(cached);
 
     // Fallback default
@@ -86,7 +86,7 @@ export const DataService = {
 
   updateUserProfile: async (updatedUser: User): Promise<void> => {
     // Update local cache
-    localStorage.setItem('torisplit_user_cache_' + updatedUser.email, JSON.stringify(updatedUser));
+    localStorage.setItem('simplesplit_user_cache_' + updatedUser.email, JSON.stringify(updatedUser));
 
     // Update Supabase
     const { error } = await supabase

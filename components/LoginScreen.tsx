@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Bird, Mail, User as UserIcon, Link } from 'lucide-react';
+import { Mail, User as UserIcon, Link } from 'lucide-react';
 import { DataService } from '../services/dataService';
 
 interface LoginScreenProps {
@@ -33,7 +33,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo, pendin
   const handleDemo = async () => {
      setIsLoading(true);
      // Auto generate a demo email for quick try
-     const demoEmail = `guest_${Date.now()}@torisplit.demo`;
+     const demoEmail = `guest_${Date.now()}@simplesplit.demo`;
      await DataService.login('demo', demoEmail, '參觀者');
      onImportDemo();
      setIsLoading(false);
@@ -42,10 +42,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo, pendin
   return (
     <div className="min-h-screen bg-kinari flex flex-col items-center justify-center p-6 text-stone-800">
       <div className="mb-8 text-center">
-        <div className="w-24 h-24 bg-stone-800 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl animate-bounce-slow">
-          <Bird size={48} className="text-stone-100" />
+        <div className="w-24 h-24 bg-stone-800 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl animate-bounce-slow overflow-hidden">
+           {/* Inline SVG Logo to ensure it renders correctly without external requests */}
+           <svg className="w-16 h-16" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+             {/* Green Stone (Top Left) */}
+             <path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/>
+             {/* White Stone (Bottom Right) */}
+             <path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/>
+           </svg>
         </div>
-        <h1 className="text-4xl font-serif font-bold mb-2 tracking-wide">ToriSplit</h1>
+        <h1 className="text-4xl font-serif font-bold mb-2 tracking-wide">Simple Split</h1>
         <p className="text-stone-500 font-sans tracking-widest">多人即時協作 • 分帳如羽毛般輕盈</p>
       </div>
 
