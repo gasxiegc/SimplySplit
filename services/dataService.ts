@@ -3,6 +3,7 @@ import { Project, User, Expense } from '../types';
 import { supabase } from './supabase';
 
 const USER_PREF_KEY = 'torisplit_user_pref';
+const DEFAULT_SYNC_PASSWORD = 'SimplySplitDefaultPassword123!';
 
 // Helper to map DB profile (snake_case) to App User (camelCase)
 const mapProfile = (p: any): User => ({
@@ -28,14 +29,22 @@ const mapExpense = (e: any): Expense => ({
 });
 
 export const DataService = {
-  // Authentication: Use Supabase Anonymous Auth + Profiles Table
+  // Trigger OAuth Login (Google / LINE)
+  loginWithOAuth: async (provider: 'google' | 'line'): Promise<void> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: provider,
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+  },
+
+  // Authentication Router
   login: async (provider: string, email?: string, name?: string): Promise<User | null> => {
     try {
-      // 1. Check current session with a timeout to prevent hanging
-      const sessionPromise = supabase.auth.getSession();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000));
-      
-      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+      // 1. Check current session
+      const { data: { session } } = await supabase.auth.getSession();
       
       let userId = session?.user?.id;
 
@@ -43,24 +52,79 @@ export const DataService = {
         // If 'auto' login (app start) and no session, return null to show login screen
         if (provider === 'auto') return null;
 
-        // 2. Sign in anonymously if not logged in
-        const { data: authData, error } = await supabase.auth.signInAnonymously();
-        if (error) throw error;
-        userId = authData.user?.id;
+        if (provider === 'email' && email) {
+            // === EMAIL SYNC STRATEGY ===
+            // Try to Sign Up first (Auto Create). If user exists, fall back to Sign In.
+            // We use a default password to allow "Email as ID" behavior without inbox checking for the demo.
+            
+            // Attempt Sign Up
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                email: email,
+                password: DEFAULT_SYNC_PASSWORD,
+                options: { data: { full_name: name } }
+            });
+
+            if (signUpError) {
+                // If user already exists, try Sign In
+                if (signUpError.message.includes('already registered') || signUpError.status === 400 || signUpError.status === 422) {
+                     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+                        email: email,
+                        password: DEFAULT_SYNC_PASSWORD
+                     });
+                     
+                     if (signInError) throw signInError;
+                     userId = signInData.user?.id;
+                } else {
+                    throw signUpError;
+                }
+            } else {
+                // Sign Up Successful (or waiting for confirmation if enabled in Supabase)
+                if (!signUpData.session && !signUpData.user) {
+                     throw new Error("Login failed. Please check if 'Confirm Email' is disabled in Supabase.");
+                }
+                userId = signUpData.user?.id;
+            }
+
+        } else if (provider === 'anonymous') {
+            // === ANONYMOUS STRATEGY ===
+            try {
+                const { data: authData, error } = await supabase.auth.signInAnonymously();
+                if (error) throw error;
+                userId = authData.user?.id;
+            } catch (authError: any) {
+                // Fallback for when Anonymous is disabled: Create a shadow guest account
+                if (authError.message?.includes('Anonymous sign-ins are disabled') || authError.code === 'signup_disabled') {
+                    const randomId = Math.random().toString(36).substring(2, 10);
+                    const timestamp = Date.now();
+                    const dummyEmail = `guest_${timestamp}_${randomId}@simplysplit.app`;
+                    const dummyPassword = `secret_${timestamp}_${randomId}`;
+
+                    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                        email: dummyEmail,
+                        password: dummyPassword,
+                    });
+
+                    if (signUpError) throw signUpError;
+                    userId = signUpData.user?.id;
+                } else {
+                    throw authError;
+                }
+            }
+        }
       }
 
-      if (!userId) throw new Error("Login failed");
+      if (!userId) throw new Error("Login failed: No user ID generated.");
 
-      // 3. Upsert Profile
+      // 3. Upsert Profile (Sync Name)
       const timestamp = new Date().toISOString();
       
+      // If we have a name (from login screen), update it. 
+      // If auto-login, we might just want to fetch.
       if (name) {
-         // Update existing or create new with provided name
          const userData = {
             id: userId,
             name: name,
-            email: email || null,
-            animal: 'bird', // Default
+            email: email || session?.user?.email || null,
             updated_at: timestamp
          };
 
@@ -68,28 +132,23 @@ export const DataService = {
           .from('profiles')
           .upsert(userData, { onConflict: 'id' });
          
-         if (profileError) console.error('Error updating profile:', profileError);
-         return { ...userData, customAvatar: undefined } as User;
-      } else {
-         // Fetch existing profile
-         const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-         
-         if (profile) return mapProfile(profile);
-         
-         // Fallback if profile missing but auth exists (should rarely happen)
-         const newProfile = { id: userId, name: '我', animal: 'bird', updated_at: timestamp };
-         const { error: insertError } = await supabase.from('profiles').insert(newProfile);
-         
-         if (insertError) {
-             console.error("Profile creation failed:", insertError);
-             // If table doesn't exist or RLS issue, return a dummy user so app doesn't crash
-             return { id: userId, name: 'Guest', animal: 'bird' };
+         if (profileError) {
+             // If profile table missing or RLS error, ignore but log
+             console.error('Error updating profile:', profileError);
          }
-         return mapProfile(newProfile);
-      }
+         return { ...userData, animal: 'bird' } as User; // Default animal if we just created
+      } 
+      
+      // Fetch existing profile
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      
+      if (profile) return mapProfile(profile);
+      
+      // Fallback if profile missing
+      return { id: userId, name: name || 'User', animal: 'bird' };
+
     } catch (error) {
       console.error("Login service error:", error);
-      // If auto-login fails, return null so user sees login screen instead of infinite loader
       if (provider === 'auto') return null;
       throw error;
     }
@@ -212,7 +271,6 @@ export const DataService = {
   },
 
   updateProject: async (updatedProject: Project): Promise<void> => {
-    // 1. Update project details
     await supabase
       .from('projects')
       .update({
@@ -224,7 +282,6 @@ export const DataService = {
       .eq('id', updatedProject.id);
   },
   
-  // New helper for single expense updates
   upsertExpense: async (projectId: string, expense: Expense) => {
       const payload = {
         project_id: projectId,
@@ -276,13 +333,11 @@ export const DataService = {
         });
     }
     
-    // Fetch fresh to ensure we have the correct structure
     const projects = await DataService.getProjects();
     const loaded = projects.find(proj => proj.id === p.id);
     return loaded || p;
   },
 
-  // User Preferences (Client side only)
   getTheme: (): string => {
     return localStorage.getItem(USER_PREF_KEY + '_theme') || 'default';
   },
