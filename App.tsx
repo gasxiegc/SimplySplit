@@ -70,6 +70,7 @@ const App: React.FC = () => {
            const joinedProject = await DataService.joinProjectByCode(pendingInviteCode);
            if (joinedProject) {
              setPendingInviteCode(null);
+             // We will load projects below, which will include the new one
            }
          } catch (e) {
            console.error("Auto-join failed", e);
@@ -78,11 +79,11 @@ const App: React.FC = () => {
 
       try {
         if (email) {
-            // Fetch initial data
-            await refreshData();
+            const data = await DataService.getProjects();
+            setProjects(data);
             
-            // Note: In DataService now, getting projects is async and hits Supabase
-            // If valid projects return, we assume logged in state is valid
+            // If we just auto-joined, maybe redirect to that project?
+            // For now, go to project list
             setView('projects');
         } else {
             setView('login');
@@ -102,16 +103,17 @@ const App: React.FC = () => {
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // REAL-TIME SYNC: Subscribe to Supabase changes
-    // This replaces the old 'storage' event listener
-    const subscription = DataService.subscribeToProjects(() => {
-       console.log("Realtime update received!");
-       refreshData();
-    });
+    // Real-time Sync Simulation: Listen for localStorage changes from other tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.includes('torisplit_db')) {
+        refreshData();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      if (subscription) subscription.unsubscribe();
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, [pendingInviteCode]);
 
@@ -119,13 +121,7 @@ const App: React.FC = () => {
     if (DataService.getCurrentUserEmail()) {
       const data = await DataService.getProjects();
       setProjects(data);
-      // Sync current project if it exists
       if (currentProject) {
-        // We need to look up the ID in the new data to get fresh content
-        // Note: currentProject in this scope might be stale closure, but we are setting state
-        // To be safe, we check against the ID of the state we have
-        // But inside useEffect/async, we rely on the data fetched.
-        // Better logic:
         const updatedCurrent = data.find(p => p.id === currentProject.id);
         if (updatedCurrent) {
           setCurrentProject(updatedCurrent);
@@ -133,21 +129,6 @@ const App: React.FC = () => {
       }
     }
   };
-  
-  // Also force refresh when currentProject ID changes to ensure we are watching it?
-  // Actually, the subscription is global for the user's projects.
-  // But we need to make sure the `currentProject` state inside refreshData is accessible.
-  // Using a ref or just triggering a re-fetch is easier. 
-  // For simplicity, we just rely on `setProjects` triggering re-renders, 
-  // but `currentProject` needs manual update.
-  useEffect(() => {
-      if (currentProject && projects.length > 0) {
-          const fresh = projects.find(p => p.id === currentProject.id);
-          if (fresh && JSON.stringify(fresh) !== JSON.stringify(currentProject)) {
-              setCurrentProject(fresh);
-          }
-      }
-  }, [projects]);
 
   const handleInstallPWA = async () => {
     if (!deferredPrompt) {
@@ -174,10 +155,8 @@ const App: React.FC = () => {
       }
     }
 
-    // Subscribe again now that we are logged in
-    DataService.subscribeToProjects(() => refreshData());
-
-    await refreshData();
+    const data = await DataService.getProjects();
+    setProjects(data);
     setView('projects');
     setLoading(false);
   };
@@ -185,7 +164,8 @@ const App: React.FC = () => {
   const handleImportDemo = async () => {
     setLoading(true);
     const demo = await DataService.createDemoProject();
-    await refreshData();
+    const data = await DataService.getProjects();
+    setProjects(data);
     setCurrentProject(demo);
     setView('dashboard');
     setLoading(false);
@@ -206,25 +186,22 @@ const App: React.FC = () => {
   const handleCreateProject = async (name: string, currency: string, startDate?: number, endDate?: number) => {
     setLoading(true);
     const newProject = await DataService.createProject(name, currency, startDate, endDate);
-    await refreshData();
+    const updatedList = await DataService.getProjects(); 
+    setProjects(updatedList);
     setCurrentProject(newProject);
     setView('dashboard');
     setLoading(false);
   };
 
   const handleUpdateProject = async (updated: Project) => {
-    // Optimistic UI update
+    await DataService.updateProject(updated);
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (currentProject?.id === updated.id) setCurrentProject(updated);
-    
-    await DataService.updateProject(updated);
-    // Realtime subscription will likely trigger a refresh shortly after, ensuring consistency
   };
 
   const handleDeleteProject = async (id: string) => {
-    // Optimistic
-    setProjects(prev => prev.filter(p => p.id !== id));
     await DataService.deleteProject(id);
+    setProjects(prev => prev.filter(p => p.id !== id));
   };
 
   const openEditProjectModal = () => {
@@ -299,11 +276,9 @@ const App: React.FC = () => {
     }
 
     const updatedProject = { ...currentProject, expenses: updatedExpenses };
-    // Optimistic
     setCurrentProject(updatedProject);
-    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
-    
     await DataService.updateProject(updatedProject);
+    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
     setEditingExpense(null);
   };
 
@@ -313,11 +288,9 @@ const App: React.FC = () => {
       ...currentProject,
       expenses: currentProject.expenses.filter(e => e.id !== id)
     };
-    // Optimistic
     setCurrentProject(updatedProject);
-    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
-    
     await DataService.updateProject(updatedProject);
+    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
   };
 
   const ShareOptions = ({ project }: { project: Project }) => {

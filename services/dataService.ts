@@ -1,35 +1,32 @@
 
-import { supabase } from './supabase';
-import { Project, User } from '../types';
+import { Project, User, Expense } from '../types';
 
-// DB Table Names
-const TBL_PROFILES = 'profiles';
-const TBL_PROJECTS = 'projects';
-
+// We simulate a "Cloud Database" using a single global key in LocalStorage.
+// In a real app, this would be your Supabase/Firebase database.
+const DB_PROJECTS_KEY = 'torisplit_db_projects_v3'; 
+const DB_USERS_KEY = 'torisplit_db_users_v3';
 const CURRENT_USER_EMAIL_KEY = 'torisplit_current_user_email';
+
+// Simulate network delay for realism
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const DataService = {
   
   // --- AUTHENTICATION & USER MANAGEMENT ---
 
+  // Login using Email as the key. 
+  // If user exists in "Cloud DB", return profile. If not, create new.
   login: async (provider: string, email: string, name: string): Promise<User> => {
-    // 1. Check if user exists in Supabase
-    const { data: existingUser, error } = await supabase
-      .from(TBL_PROFILES)
-      .select('*')
-      .eq('email', email)
-      .single();
+    await delay(500);
+    
+    // 1. Get All Users from "Cloud"
+    const allUsersStr = localStorage.getItem(DB_USERS_KEY);
+    const allUsers: User[] = allUsersStr ? JSON.parse(allUsersStr) : [];
+    
+    // 2. Check if user exists by email
+    let user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
 
-    let user: User;
-
-    if (existingUser) {
-      // User exists, merge latest name if provided, but keep other data
-      user = existingUser.data;
-      if (name && user.name !== name) {
-          user.name = name;
-          await DataService.updateUserProfile(user);
-      }
-    } else {
+    if (!user) {
       // Create new user
       user = { 
         id: 'u_' + Date.now() + Math.random().toString(36).substr(2, 5), 
@@ -37,139 +34,121 @@ export const DataService = {
         email: email,
         animal: 'bird' 
       };
-      
-      const { error: insertError } = await supabase
-        .from(TBL_PROFILES)
-        .insert([{ email: email, name: user.name, data: user }]);
-        
-      if (insertError) throw insertError;
+      allUsers.push(user);
+      localStorage.setItem(DB_USERS_KEY, JSON.stringify(allUsers));
     }
 
-    // Set Local Session
+    // 3. Set Session
     localStorage.setItem(CURRENT_USER_EMAIL_KEY, user.email);
     return user;
   },
 
   logout: () => {
     localStorage.removeItem(CURRENT_USER_EMAIL_KEY);
-    supabase.auth.signOut(); // Best practice
   },
 
   getCurrentUserEmail: (): string | null => {
     return localStorage.getItem(CURRENT_USER_EMAIL_KEY);
   },
 
-  // Get profile from DB (or fallback to local cache/guest if offline logic needed, 
-  // but for now we fetch fresh)
-  getUserProfile: async (): Promise<User> => {
+  getUserProfile: (): User => {
     const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
     if (!email) throw new Error("Not logged in");
 
-    const { data, error } = await supabase
-      .from(TBL_PROFILES)
-      .select('data')
-      .eq('email', email)
-      .single();
-
-    if (error || !data) {
-        // Fallback or Error
-        return { id: 'temp', name: 'Guest', email: email, animal: 'bird' };
-    }
-    return data.data as User;
-  },
-
-  // Synchronous version for UI rendering (relies on component state usually)
-  // This is a helper for legacy components expecting sync return. 
-  // Ideally components should use async/await.
-  // We will return a basic object based on localStorage email if simpler.
-  getUserProfileSync: (): User => {
-      const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
-      if (!email) throw new Error("Not logged in");
-      // Note: This might be stale compared to DB, but good for UI skeleton
-      return { id: 'user', name: 'Loading...', email, animal: 'bird' }; 
+    const allUsers: User[] = JSON.parse(localStorage.getItem(DB_USERS_KEY) || '[]');
+    const user = allUsers.find(u => u.email === email);
+    
+    // Fallback if session exists but DB was cleared
+    return user || { id: 'temp', name: 'Guest', email: email, animal: 'bird' };
   },
 
   updateUserProfile: async (updatedUser: User): Promise<void> => {
-    const { error } = await supabase
-      .from(TBL_PROFILES)
-      .update({ name: updatedUser.name, data: updatedUser })
-      .eq('email', updatedUser.email);
-      
-    if (error) throw error;
+    const allUsers: User[] = JSON.parse(localStorage.getItem(DB_USERS_KEY) || '[]');
+    const index = allUsers.findIndex(u => u.email === updatedUser.email);
+    
+    if (index !== -1) {
+      allUsers[index] = updatedUser;
+      localStorage.setItem(DB_USERS_KEY, JSON.stringify(allUsers));
+    }
   },
 
-  // --- PROJECT MANAGEMENT (REAL DB) ---
+  // --- PROJECT MANAGEMENT (MULTIPLAYER) ---
 
+  // Fetch only projects where the current user's email is listed in 'memberEmails'
   getProjects: async (): Promise<Project[]> => {
+    await delay(300);
     const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
     if (!email) return [];
 
-    // Select projects where 'member_emails' array contains the email
-    const { data, error } = await supabase
-      .from(TBL_PROJECTS)
-      .select('data')
-      .contains('member_emails', [email]);
+    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
+    
+    // FILTER: Only return projects I am a member of
+    return allProjects.filter(p => 
+      p.memberEmails.some(e => e.toLowerCase() === email.toLowerCase())
+    );
+  },
 
-    if (error) {
-        console.error("Error fetching projects:", error);
-        return [];
-    }
+  // When saving/updating, we write to the Global DB
+  saveProjects: async (projectsToSave: Project[]): Promise<void> => {
+    // This method is legacy-ish. In a DB model, we usually update specific projects.
+    // However, to keep compatibility with App.tsx logic that passes the full list:
+    
+    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
+    
+    // We merge the updated projects into the global DB
+    projectsToSave.forEach(updatedP => {
+      const idx = allProjects.findIndex(p => p.id === updatedP.id);
+      if (idx !== -1) {
+        allProjects[idx] = updatedP;
+      } else {
+        allProjects.push(updatedP);
+      }
+    });
 
-    return data.map((row: any) => row.data as Project);
+    localStorage.setItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
   },
 
   updateProject: async (updatedProject: Project): Promise<void> => {
-    // We store the full JSON object + helpful columns for querying
-    const { error } = await supabase
-      .from(TBL_PROJECTS)
-      .upsert({ 
-          id: updatedProject.id, 
-          invite_code: updatedProject.inviteCode,
-          member_emails: updatedProject.memberEmails,
-          data: updatedProject 
-      });
-
-    if (error) throw error;
+    await delay(200);
+    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
+    const index = allProjects.findIndex(p => p.id === updatedProject.id);
+    
+    if (index !== -1) {
+      allProjects[index] = updatedProject;
+    } else {
+      allProjects.push(updatedProject);
+    }
+    
+    localStorage.setItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
   },
 
   deleteProject: async (projectId: string): Promise<void> => {
-    const { error } = await supabase
-      .from(TBL_PROJECTS)
-      .delete()
-      .eq('id', projectId);
-      
-    if (error) throw error;
+    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
+    const filtered = allProjects.filter(p => p.id !== projectId);
+    localStorage.setItem(DB_PROJECTS_KEY, JSON.stringify(filtered));
   },
 
   // --- JOIN & INVITE LOGIC ---
 
   joinProjectByCode: async (code: string): Promise<Project | null> => {
+    await delay(800);
     const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
     if (!email) throw new Error("Must be logged in to join");
+    const me = DataService.getUserProfile();
 
-    // 1. Find project by invite code
-    const { data, error } = await supabase
-      .from(TBL_PROJECTS)
-      .select('*')
-      .eq('invite_code', code)
-      .single();
+    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
+    const project = allProjects.find(p => p.inviteCode === code);
 
-    if (error || !data) return null;
+    if (!project) return null;
 
-    const project = data.data as Project;
-
-    // 2. Check if already a member
+    // Check if already a member
     if (!project.memberEmails.includes(email)) {
-      // Fetch my full profile to add to members list
-      const me = await DataService.getUserProfile();
-      
       project.memberEmails.push(email);
-      // Avoid duplicates in member object list
+      // Also add the User object to members list if not there (for display)
       if (!project.members.find(m => m.email === email)) {
         project.members.push(me);
       }
-
-      // 3. Update DB
+      // Save back to DB
       await DataService.updateProject(project);
     }
 
@@ -177,7 +156,7 @@ export const DataService = {
   },
 
   createProject: async (name: string, currency: string, startDate?: number, endDate?: number): Promise<Project> => {
-    const me = await DataService.getUserProfile();
+    const me = DataService.getUserProfile();
     const newProject: Project = {
       id: `proj_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
       name,
@@ -196,7 +175,9 @@ export const DataService = {
   },
 
   createDemoProject: async (): Promise<Project> => {
-    const me = await DataService.getUserProfile();
+    const me = DataService.getUserProfile();
+    
+    // Generate some fake friends
     const friend1 = { id: 'u_demo_1', name: '小雪', animal: 'rabbit', email: 'snow@demo.com' } as User;
     const friend2 = { id: 'u_demo_2', name: '阿明', animal: 'fox', email: 'ming@demo.com' } as User;
     
@@ -211,7 +192,7 @@ export const DataService = {
       memberEmails: [me.email, friend1.email, friend2.email],
       members: [me, friend1, friend2],
       expenses: [
-         {
+        {
           id: 'e1',
           amount: 15000,
           description: '居酒屋聚餐',
@@ -232,45 +213,14 @@ export const DataService = {
     return demo;
   },
 
-  // --- REALTIME SUBSCRIPTIONS ---
-  
-  subscribeToProjects: (onUpdate: () => void) => {
-    const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
-    if (!email) return null;
-
-    // Listen to changes in the 'projects' table
-    const subscription = supabase
-      .channel('public:projects')
-      .on(
-        'postgres_changes', 
-        { event: '*', schema: 'public', table: TBL_PROJECTS }, 
-        (payload) => {
-          // In a production app, we would check if the payload.new.member_emails includes me
-          // For now, we just trigger a refresh if ANY project changes to keep it reactive.
-          // Optimization: Check payload.new['member_emails'].includes(email)
-          onUpdate();
-        }
-      )
-      .subscribe();
-
-    return subscription;
-  },
-
-  checkSupabaseConnection: async (): Promise<boolean> => {
-    const { data, error } = await supabase.from(TBL_PROFILES).select('count').single();
-    if (error && error.code !== 'PGRST116') { // PGRST116 is "head" request/no rows, which implies connection is OK
-        console.error("Supabase check failed", error);
-        return false;
-    }
-    return true;
-  },
-
-  // User Preferences (Keep local for theme)
+  // User Preferences
   getTheme: (): string => {
-    return localStorage.getItem('torisplit_user_pref_theme') || 'default';
+    return localStorage.getItem(USER_PREF_KEY + '_theme') || 'default';
   },
 
   setTheme: (theme: string) => {
-    localStorage.setItem('torisplit_user_pref_theme', theme);
+    localStorage.setItem(USER_PREF_KEY + '_theme', theme);
   }
 };
+
+const USER_PREF_KEY = 'torisplit_user_pref';
