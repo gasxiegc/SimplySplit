@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { Project, Expense, ThemeType } from './types';
 import { DataService } from './services/dataService';
@@ -41,20 +40,27 @@ const App: React.FC = () => {
   useEffect(() => {
     const init = async () => {
       const savedTheme = DataService.getTheme();
-      // Ensure the saved theme still exists in our updated THEMES definition
       if (savedTheme && Object.keys(THEMES).includes(savedTheme)) {
         setTheme(savedTheme as ThemeType);
       } else {
         setTheme('default');
       }
       
-      const data = await DataService.getProjects();
-      setProjects(data);
+      // Try auto-login (check session)
+      try {
+         const user = await DataService.login('auto');
+         if (user) {
+             const data = await DataService.getProjects();
+             setProjects(data);
+             setView('projects');
+         }
+      } catch (e) {
+          // Not logged in, stay on login screen
+      }
       setLoading(false);
     };
     init();
 
-    // PWA Install Prompt Listener
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -80,6 +86,7 @@ const App: React.FC = () => {
 
   const handleLogin = async () => {
     setLoading(true);
+    // DataService.login is called inside LoginScreen, so here we just fetch data
     const data = await DataService.getProjects();
     setProjects(data);
     setView('projects');
@@ -88,15 +95,21 @@ const App: React.FC = () => {
 
   const handleImportDemo = async () => {
     setLoading(true);
-    await DataService.login('demo', 'demo@test.com', 'Demo User');
-    const demo = await DataService.createDemoProject();
-    setProjects(prev => [...prev, demo]);
-    setCurrentProject(demo);
-    setView('dashboard');
+    try {
+        const demo = await DataService.createDemoProject();
+        setProjects(prev => [demo, ...prev]);
+        setCurrentProject(demo);
+        setView('dashboard');
+    } catch (e) {
+        console.error(e);
+        alert('建立範例失敗，請確認已連線至 Supabase');
+    }
     setLoading(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+     // Optional: await supabase.auth.signOut();
+     // For this app flow, we just reset view
     setView('login');
     setCurrentProject(null);
   };
@@ -107,28 +120,26 @@ const App: React.FC = () => {
   };
 
   const handleCreateProject = async (name: string, currency: string, startDate?: number, endDate?: number) => {
-    const me = DataService.getUserProfile();
-    const newProject: Project = {
-      id: `proj_${Date.now()}`,
-      name,
-      currency,
-      startDate,
-      endDate,
-      inviteCode: Math.random().toString(36).substring(7).toUpperCase(),
-      members: [me],
-      expenses: []
-    };
-    const updated = [...projects, newProject];
-    setProjects(updated);
-    await DataService.saveProjects(updated);
-    setCurrentProject(newProject);
-    setView('dashboard');
+    setLoading(true);
+    const newProject = await DataService.createProject(name, currency, startDate, endDate);
+    if (newProject) {
+        const updated = [newProject, ...projects];
+        setProjects(updated);
+        setCurrentProject(newProject);
+        setView('dashboard');
+    }
+    setLoading(false);
   };
 
   const handleUpdateProject = async (updated: Project) => {
+    // Optimistic update
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (currentProject?.id === updated.id) setCurrentProject(updated);
+    
     await DataService.updateProject(updated);
+    // Re-fetch to confirm sync/get fresh data if needed
+    const refreshed = await DataService.getProjects();
+    setProjects(refreshed);
   };
 
   const handleDeleteProject = async (id: string) => {
@@ -185,48 +196,60 @@ const App: React.FC = () => {
   const handleSaveExpense = async (amount: number, description: string, payerId: string, splits: any[], category: string, date: number, receiptImage?: string, id?: string, customCategory?: string) => {
     if (!currentProject) return;
 
-    let updatedExpenses = [...currentProject.expenses];
-
-    if (id) {
-      updatedExpenses = updatedExpenses.map(e => e.id === id ? {
-        ...e, amount, description, payerId, splits, category, date, receiptImage, splitMode: e.splitMode, customCategory
-      } : e);
-    } else {
-      const newExpense: Expense = {
-        id: `e_${Date.now()}`,
+    const expenseData: Expense = {
+        id: id || `e_${Date.now()}`, // Temp ID if new
         amount,
         description,
         payerId,
         date,
         category,
         customCategory,
-        splitMode: 'custom', 
+        splitMode: 'custom',
         splits,
         receiptImage
-      };
-      updatedExpenses.push(newExpense);
-    }
+    };
 
-    const updatedProject = { ...currentProject, expenses: updatedExpenses };
-    setCurrentProject(updatedProject);
-    await DataService.updateProject(updatedProject);
-    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+    // Optimistic UI Update
+    let updatedExpenses = [...currentProject.expenses];
+    if (id) {
+        updatedExpenses = updatedExpenses.map(e => e.id === id ? expenseData : e);
+    } else {
+        updatedExpenses.push(expenseData);
+    }
+    const optimisticProject = { ...currentProject, expenses: updatedExpenses };
+    setCurrentProject(optimisticProject);
+    setProjects(prev => prev.map(p => p.id === currentProject.id ? optimisticProject : p));
     setEditingExpense(null);
+
+    // Sync to DB
+    const realId = await DataService.upsertExpense(currentProject.id, expenseData);
+    
+    // Replace temp ID with real ID in background
+    if (!id) {
+       const fixedExpenses = updatedExpenses.map(e => e.id === expenseData.id ? { ...e, id: realId } : e);
+       const fixedProject = { ...currentProject, expenses: fixedExpenses };
+       setCurrentProject(fixedProject);
+       setProjects(prev => prev.map(p => p.id === currentProject.id ? fixedProject : p));
+    }
   };
 
   const handleDeleteExpense = async (id: string) => {
     if (!currentProject) return;
+    
+    // Optimistic
     const updatedProject = {
       ...currentProject,
       expenses: currentProject.expenses.filter(e => e.id !== id)
     };
     setCurrentProject(updatedProject);
-    await DataService.updateProject(updatedProject);
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+
+    // Sync
+    await DataService.deleteExpense(id);
   };
 
   const ShareOptions = ({ project }: { project: Project }) => {
-    const link = `https://torisplit.app/join/${project.inviteCode}`;
+    const link = `https://torisplit.app/join/${project.inviteCode}`; // Placeholder domain
     const [copied, setCopied] = useState(false);
 
     const copyToClipboard = () => {
@@ -257,6 +280,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-kinari flex items-center justify-center flex-col gap-4">
         <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-600 rounded-full animate-spin"></div>
+        <p className="text-stone-400 text-sm font-serif animate-pulse">正在連線至資料庫...</p>
       </div>
     );
   }
