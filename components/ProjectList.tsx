@@ -45,16 +45,22 @@ const ProjectList: React.FC<ProjectListProps> = ({
   // Deletion State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{id: string, name: string} | null>(null);
 
-  // User Profile State
-  const [userProfile, setUserProfile] = useState<User>(DataService.getUserProfile());
+  // User Profile State - Initialize with sync version or null, then fetch
+  const [userProfile, setUserProfile] = useState<User>(DataService.getUserProfileSync());
+
+  // Fetch fresh profile data on mount and when settings open
+  const refreshProfile = async () => {
+    try {
+        const p = await DataService.getUserProfile();
+        setUserProfile(p);
+    } catch(e) {
+        // If fetch fails, maybe logout or stay with cached
+        console.error("Failed to load profile", e);
+    }
+  };
 
   useEffect(() => {
-    // Refresh user profile in case it changed
-    try {
-        setUserProfile(DataService.getUserProfile());
-    } catch(e) {
-        onLogout();
-    }
+    refreshProfile();
   }, [isSettingsOpen]);
 
   useEffect(() => {
@@ -126,19 +132,25 @@ const ProjectList: React.FC<ProjectListProps> = ({
         codeToUse = codeToUse.split('/join/')[1].split('/')[0];
       }
 
-      const project = await DataService.joinProjectByCode(codeToUse);
-      if (project) {
-          setIsJoinModalOpen(false);
-          setInviteCode('');
-          // Force simple refresh to ensure all components see new data
-          window.location.reload(); 
-      } else {
-          setJoinError('找不到此邀請碼，請確認後再試。');
+      try {
+        const project = await DataService.joinProjectByCode(codeToUse);
+        if (project) {
+            setIsJoinModalOpen(false);
+            setInviteCode('');
+            // Trigger a refresh (App component listens to Realtime, but this helps immediate feedback)
+            // Ideally we'd callback to App to refresh list, but reload is safe brute force for now
+            // or rely on subscription
+            window.location.href = '/'; 
+        } else {
+            setJoinError('找不到此邀請碼，請確認後再試。');
+        }
+      } catch (e) {
+         setJoinError('加入失敗，請稍後再試');
       }
   };
 
-  const handleUpdateProfile = () => {
-    DataService.updateUserProfile(userProfile);
+  const handleUpdateProfile = async () => {
+    await DataService.updateUserProfile(userProfile);
     setIsEditProfile(false);
   };
 
@@ -151,6 +163,12 @@ const ProjectList: React.FC<ProjectListProps> = ({
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleTestConnection = async () => {
+      const ok = await DataService.checkSupabaseConnection();
+      if (ok) alert("資料庫連線成功！");
+      else alert("無法連線至資料庫，請檢查設定。");
   };
 
   const themeConfig = THEMES[currentTheme];
@@ -482,6 +500,13 @@ const ProjectList: React.FC<ProjectListProps> = ({
                </div>
                <Edit2 size={16} className="text-stone-300" />
             </div>
+            
+            <button 
+                onClick={handleTestConnection}
+                className="w-full py-2 px-4 border border-stone-200 text-stone-500 rounded-xl font-bold text-sm hover:bg-stone-50 transition-all"
+            >
+                測試資料庫連線
+            </button>
 
             {/* PWA Install Button */}
             <button 
