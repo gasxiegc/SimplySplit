@@ -1,6 +1,5 @@
 
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Project, Expense, ThemeType } from './types';
 import { DataService } from './services/dataService';
 import ExpenseList from './components/ExpenseList';
@@ -28,6 +27,7 @@ const App: React.FC = () => {
   
   const [theme, setTheme] = useState<ThemeType>('default');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
   // Edit Project State
   const [editProjName, setEditProjName] = useState('');
@@ -37,34 +37,98 @@ const App: React.FC = () => {
   const [editProjCustomCurrency, setEditProjCustomCurrency] = useState('');
   const [editProjSecondaryCurrency, setEditProjSecondaryCurrency] = useState(SECONDARY_CURRENCIES[0]);
 
-  // Initialization
+  // Handle URL Routing for Join Links (e.g., /join/CODE)
+  useEffect(() => {
+    const path = window.location.pathname;
+    // Regex to match /join/CODE
+    const match = path.match(/^\/join\/([a-zA-Z0-9-]+)/);
+    
+    if (match && match[1]) {
+      const code = match[1];
+      console.log("Detected Invite Code:", code);
+      setPendingInviteCode(code);
+      // Clean URL visually without reload
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
+  // Initialization & Real-time Sync
   useEffect(() => {
     const init = async () => {
       const savedTheme = DataService.getTheme();
-      // Ensure the saved theme still exists in our updated THEMES definition
       if (savedTheme && Object.keys(THEMES).includes(savedTheme)) {
         setTheme(savedTheme as ThemeType);
       } else {
         setTheme('default');
       }
       
-      const data = await DataService.getProjects();
-      setProjects(data);
+      const email = DataService.getCurrentUserEmail();
+      
+      // If we have a pending invite code and user is already logged in, join immediately
+      if (email && pendingInviteCode) {
+         try {
+           const joinedProject = await DataService.joinProjectByCode(pendingInviteCode);
+           if (joinedProject) {
+             setPendingInviteCode(null);
+             // We will load projects below, which will include the new one
+           }
+         } catch (e) {
+           console.error("Auto-join failed", e);
+         }
+      }
+
+      try {
+        if (email) {
+            const data = await DataService.getProjects();
+            setProjects(data);
+            
+            // If we just auto-joined, maybe redirect to that project?
+            // For now, go to project list
+            setView('projects');
+        } else {
+            setView('login');
+        }
+      } catch (e) {
+          setView('login');
+      }
       setLoading(false);
     };
+
     init();
 
-    // PWA Install Prompt Listener
+    // PWA Install Prompt
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
+    // Real-time Sync Simulation: Listen for localStorage changes from other tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.includes('torisplit_db')) {
+        refreshData();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [pendingInviteCode]);
+
+  const refreshData = async () => {
+    if (DataService.getCurrentUserEmail()) {
+      const data = await DataService.getProjects();
+      setProjects(data);
+      if (currentProject) {
+        const updatedCurrent = data.find(p => p.id === currentProject.id);
+        if (updatedCurrent) {
+          setCurrentProject(updatedCurrent);
+        }
+      }
+    }
+  };
 
   const handleInstallPWA = async () => {
     if (!deferredPrompt) {
@@ -80,6 +144,17 @@ const App: React.FC = () => {
 
   const handleLogin = async () => {
     setLoading(true);
+    
+    // Check pending invite after login
+    if (pendingInviteCode) {
+      try {
+        await DataService.joinProjectByCode(pendingInviteCode);
+        setPendingInviteCode(null);
+      } catch (e) {
+        console.error("Post-login join failed", e);
+      }
+    }
+
     const data = await DataService.getProjects();
     setProjects(data);
     setView('projects');
@@ -88,17 +163,19 @@ const App: React.FC = () => {
 
   const handleImportDemo = async () => {
     setLoading(true);
-    await DataService.login('demo', 'demo@test.com', 'Demo User');
     const demo = await DataService.createDemoProject();
-    setProjects(prev => [...prev, demo]);
+    const data = await DataService.getProjects();
+    setProjects(data);
     setCurrentProject(demo);
     setView('dashboard');
     setLoading(false);
   };
 
   const handleLogout = () => {
+    DataService.logout();
     setView('login');
     setCurrentProject(null);
+    setPendingInviteCode(null);
   };
 
   const handleThemeChange = (newTheme: ThemeType) => {
@@ -107,28 +184,19 @@ const App: React.FC = () => {
   };
 
   const handleCreateProject = async (name: string, currency: string, startDate?: number, endDate?: number) => {
-    const me = DataService.getUserProfile();
-    const newProject: Project = {
-      id: `proj_${Date.now()}`,
-      name,
-      currency,
-      startDate,
-      endDate,
-      inviteCode: Math.random().toString(36).substring(7).toUpperCase(),
-      members: [me],
-      expenses: []
-    };
-    const updated = [...projects, newProject];
-    setProjects(updated);
-    await DataService.saveProjects(updated);
+    setLoading(true);
+    const newProject = await DataService.createProject(name, currency, startDate, endDate);
+    const updatedList = await DataService.getProjects(); 
+    setProjects(updatedList);
     setCurrentProject(newProject);
     setView('dashboard');
+    setLoading(false);
   };
 
   const handleUpdateProject = async (updated: Project) => {
+    await DataService.updateProject(updated);
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (currentProject?.id === updated.id) setCurrentProject(updated);
-    await DataService.updateProject(updated);
   };
 
   const handleDeleteProject = async (id: string) => {
@@ -226,28 +294,37 @@ const App: React.FC = () => {
   };
 
   const ShareOptions = ({ project }: { project: Project }) => {
-    // Use window.location.origin to support Vercel deployment URLs dynamically
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://torisplit.app';
-    const link = `${origin}/join/${project.inviteCode}`;
     const [copied, setCopied] = useState(false);
+    // Dynamic origin
+    const shareUrl = `${window.location.origin}/join/${project.inviteCode}`;
 
-    const copyToClipboard = () => {
-      navigator.clipboard.writeText(link);
+    const copyLink = () => {
+      navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     };
 
     return (
-       <div className="space-y-4">
-          <div className="flex items-center gap-2 p-3 bg-stone-100 rounded-xl">
-             <span className="flex-1 text-xs text-stone-500 truncate font-mono">{link}</span>
-             <button onClick={copyToClipboard} className="p-2 bg-white rounded-lg shadow-sm">
-                {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16} />}
-             </button>
+       <div className="space-y-6">
+          <div className="text-center bg-stone-50 p-4 rounded-2xl">
+             <p className="text-sm text-stone-500 mb-2">計畫邀請連結</p>
+             <div onClick={copyLink} className="flex items-center gap-2 cursor-pointer bg-white border border-stone-200 px-3 py-3 rounded-xl mb-2 hover:border-stone-400 transition-colors">
+                 <div className="flex-1 overflow-hidden">
+                    <p className="text-stone-600 font-medium truncate text-sm text-left">{shareUrl}</p>
+                 </div>
+                 {copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} className="text-stone-400" />}
+             </div>
+             <p className="text-xs text-stone-400">點擊上方連結即可複製，朋友點擊連結將自動加入。</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-             <button onClick={() => window.open(`https://line.me/R/msg/text/?${encodeURIComponent(project.name + ' ' + link)}`)} className="bg-[#06C755] text-white py-3 rounded-xl font-bold">LINE 分享</button>
-             <button onClick={() => window.open(`fb-messenger://share/?link=${encodeURIComponent(link)}`)} className="bg-[#0084FF] text-white py-3 rounded-xl font-bold">Messenger</button>
+
+          <div className="text-center">
+             <p className="text-sm text-stone-500 mb-2">或輸入邀請代碼</p>
+             <h2 className="text-3xl font-serif font-bold text-stone-800 tracking-wider select-all">{project.inviteCode}</h2>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-2">
+             <button onClick={() => window.open(`https://line.me/R/msg/text/?${encodeURIComponent('加入我的分帳計畫！點擊連結：' + shareUrl)}`)} className="bg-[#06C755] text-white py-3 rounded-xl font-bold hover:opacity-90">LINE 分享</button>
+             <button onClick={() => window.open(`fb-messenger://share/?link=${encodeURIComponent(shareUrl)}`)} className="bg-[#0084FF] text-white py-3 rounded-xl font-bold hover:opacity-90">Messenger</button>
           </div>
        </div>
     );
@@ -259,12 +336,19 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-kinari flex items-center justify-center flex-col gap-4">
         <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-600 rounded-full animate-spin"></div>
+        <p className="text-stone-500 font-bold animate-pulse">正在同步雲端資料...</p>
       </div>
     );
   }
 
   if (view === 'login') {
-    return <LoginScreen onLogin={handleLogin} onImportDemo={handleImportDemo} />;
+    return (
+        <LoginScreen 
+            onLogin={handleLogin} 
+            onImportDemo={handleImportDemo} 
+            pendingInviteCode={pendingInviteCode}
+        />
+    );
   }
 
   if (view === 'projects') {
@@ -294,8 +378,8 @@ const App: React.FC = () => {
           <button onClick={() => setView('projects')} className="p-2 -ml-2 rounded-full hover:bg-black/5">
             <ArrowLeft size={24} />
           </button>
-          <div>
-            <h1 className="font-serif font-bold text-xl leading-tight">{currentProject.name}</h1>
+          <div className="overflow-hidden">
+            <h1 className="font-serif font-bold text-xl leading-tight truncate max-w-[200px]">{currentProject.name}</h1>
             <p className="text-[10px] opacity-60 font-medium tracking-wide">
               {currentProject.members.length} 成員 • {currentProject.currency}
             </p>
@@ -312,6 +396,7 @@ const App: React.FC = () => {
            <button 
              onClick={() => setIsShareModalOpen(true)}
              className="p-2 rounded-full hover:bg-black/5 transition-colors text-stone-600"
+             title="邀請成員"
            >
              <Share2 size={20} />
            </button>
@@ -478,7 +563,7 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Share Modal */}
+      {/* Share Modal (In Dashboard) */}
       <Modal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="分享計畫">
           {currentProject && <ShareOptions project={currentProject} />}
       </Modal>

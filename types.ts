@@ -7,7 +7,7 @@ export interface User {
   name: string;
   animal: AnimalType;
   customAvatar?: string; // base64
-  email?: string;
+  email: string; // Email is now mandatory and serves as the sync key
 }
 
 export type SplitMode = 'equal' | 'custom';
@@ -37,8 +37,10 @@ export interface Project {
   startDate?: number;
   endDate?: number;
   members: User[];
+  memberEmails: string[]; // List of emails that have access to this project
   expenses: Expense[];
   inviteCode: string;
+  ownerEmail: string;
 }
 
 export interface Transaction {

@@ -1,10 +1,9 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { Project, ThemeType, User, AnimalType } from '../types';
 import { THEMES, CURRENCIES, ANIMAL_PATHS, PRIMARY_CURRENCIES, SECONDARY_CURRENCIES } from '../constants';
 import { DataService } from '../services/dataService';
-import { Plus, ArrowRight, Settings, Trash2, LogOut, Palette, Edit2, Calendar, Share2, Copy, Check, User as UserIcon, Camera, X, Smartphone } from 'lucide-react';
+import { Plus, ArrowRight, Settings, Trash2, LogOut, Palette, Edit2, Calendar, Share2, Copy, Check, User as UserIcon, Camera, X, Smartphone, Users, Link } from 'lucide-react';
 import Modal from './ui/Modal';
 import Avatar from './ui/Avatar';
 
@@ -24,6 +23,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
   projects, onSelectProject, onCreateProject, onUpdateProject, onDeleteProject, onLogout, currentTheme, onSetTheme, onInstallPWA 
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isEditProfile, setIsEditProfile] = useState(false);
@@ -38,11 +38,24 @@ const ProjectList: React.FC<ProjectListProps> = ({
   const [endDate, setEndDate] = useState('');
   const [shareProject, setShareProject] = useState<Project | null>(null);
 
+  // Join State
+  const [inviteCode, setInviteCode] = useState('');
+  const [joinError, setJoinError] = useState('');
+
   // Deletion State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{id: string, name: string} | null>(null);
 
   // User Profile State
   const [userProfile, setUserProfile] = useState<User>(DataService.getUserProfile());
+
+  useEffect(() => {
+    // Refresh user profile in case it changed
+    try {
+        setUserProfile(DataService.getUserProfile());
+    } catch(e) {
+        onLogout();
+    }
+  }, [isSettingsOpen]);
 
   useEffect(() => {
     if (editingProject) {
@@ -103,10 +116,30 @@ const ProjectList: React.FC<ProjectListProps> = ({
     }
   };
 
+  const handleJoinProject = async () => {
+      if(!inviteCode) return;
+      setJoinError('');
+      
+      let codeToUse = inviteCode.trim();
+      // Handle URL paste: https://domain.com/join/CODE
+      if (codeToUse.includes('/join/')) {
+        codeToUse = codeToUse.split('/join/')[1].split('/')[0];
+      }
+
+      const project = await DataService.joinProjectByCode(codeToUse);
+      if (project) {
+          setIsJoinModalOpen(false);
+          setInviteCode('');
+          // Force simple refresh to ensure all components see new data
+          window.location.reload(); 
+      } else {
+          setJoinError('找不到此邀請碼，請確認後再試。');
+      }
+  };
+
   const handleUpdateProfile = () => {
     DataService.updateUserProfile(userProfile);
     setIsEditProfile(false);
-    // Ideally we would update all projects where user is member, but for MVP we update local state
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,26 +156,38 @@ const ProjectList: React.FC<ProjectListProps> = ({
   const themeConfig = THEMES[currentTheme];
 
   const ShareOptions = ({ project }: { project: Project }) => {
-    const link = `https://torisplit.app/join/${project.inviteCode}`;
     const [copied, setCopied] = useState(false);
+    const shareUrl = `${window.location.origin}/join/${project.inviteCode}`;
 
-    const copyToClipboard = () => {
-      navigator.clipboard.writeText(link);
+    const copyLink = () => {
+      navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     };
 
     return (
-       <div className="space-y-4">
-          <div className="flex items-center gap-2 p-3 bg-stone-100 rounded-xl">
-             <span className="flex-1 text-xs text-stone-500 truncate font-mono">{link}</span>
-             <button onClick={copyToClipboard} className="p-2 bg-white rounded-lg shadow-sm">
-                {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16} />}
-             </button>
+       <div className="space-y-6">
+          <div className="text-center bg-stone-50 p-4 rounded-2xl">
+              <p className="text-stone-500 text-sm mb-2">計畫邀請連結</p>
+              <div onClick={copyLink} className="flex items-center gap-2 cursor-pointer bg-white border border-stone-200 px-3 py-3 rounded-xl mb-2 hover:border-stone-400 transition-colors">
+                  <div className="flex-1 overflow-hidden">
+                      <p className="text-stone-600 font-medium truncate text-sm text-left">{shareUrl}</p>
+                  </div>
+                  {copied ? <Check size={18} className="text-green-500"/> : <Copy size={18} className="text-stone-400"/>}
+              </div>
+              <p className="text-xs text-stone-400">點擊上方連結即可複製，朋友點擊連結將自動加入。</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-             <button onClick={() => window.open(`https://line.me/R/msg/text/?${encodeURIComponent(project.name + ' ' + link)}`)} className="bg-[#06C755] text-white py-3 rounded-xl font-bold">LINE 分享</button>
-             <button onClick={() => window.open(`fb-messenger://share/?link=${encodeURIComponent(link)}`)} className="bg-[#0084FF] text-white py-3 rounded-xl font-bold">Messenger</button>
+
+          <div className="text-center">
+              <p className="text-sm text-stone-500 mb-1">或輸入邀請代碼</p>
+              <h2 className="text-3xl font-serif font-bold text-stone-800 tracking-wider select-all">{project.inviteCode}</h2>
+          </div>
+
+          <div className="border-t border-stone-100 pt-4">
+             <div className="grid grid-cols-2 gap-3">
+                 <button onClick={() => window.open(`https://line.me/R/msg/text/?${encodeURIComponent('快來加入我的旅費分帳計畫！點擊連結：' + shareUrl)}`)} className="bg-[#06C755] text-white py-3 rounded-xl font-bold hover:opacity-90">LINE 分享</button>
+                 <button onClick={() => window.open(`fb-messenger://share/?link=${encodeURIComponent(shareUrl)}`)} className="bg-[#0084FF] text-white py-3 rounded-xl font-bold hover:opacity-90">Messenger</button>
+             </div>
           </div>
        </div>
     );
@@ -153,8 +198,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
       <header className="flex justify-between items-center mb-8 pt-4">
         <div>
           <h1 className="text-3xl font-serif font-bold mb-1">我的計畫</h1>
-          <p className="text-sm opacity-60">
-            {userProfile.name}，今天想去哪裡？
+          <p className="text-sm opacity-60 flex items-center gap-1">
+             <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+             {userProfile.email}
           </p>
         </div>
         <button 
@@ -182,21 +228,25 @@ const ProjectList: React.FC<ProjectListProps> = ({
                  >
                    <Share2 size={18} />
                  </button>
-                 <button
-                    onClick={(e) => { e.stopPropagation(); setEditingProject(project); setIsModalOpen(true); }}
-                    className="p-2 text-stone-300 hover:text-stone-500 hover:bg-stone-100 rounded-full transition-colors"
-                 >
-                   <Edit2 size={18} />
-                 </button>
-                 <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteConfirmation({ id: project.id, name: project.name });
-                    }}
-                    className="p-2 text-stone-300 hover:text-red-400 hover:bg-red-50 rounded-full transition-colors"
-                 >
-                   <Trash2 size={18} />
-                 </button>
+                 {project.ownerEmail === userProfile.email && (
+                    <>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setEditingProject(project); setIsModalOpen(true); }}
+                            className="p-2 text-stone-300 hover:text-stone-500 hover:bg-stone-100 rounded-full transition-colors"
+                        >
+                        <Edit2 size={18} />
+                        </button>
+                        <button
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmation({ id: project.id, name: project.name });
+                            }}
+                            className="p-2 text-stone-300 hover:text-red-400 hover:bg-red-50 rounded-full transition-colors"
+                        >
+                        <Trash2 size={18} />
+                        </button>
+                    </>
+                 )}
                </div>
             </div>
             
@@ -207,9 +257,18 @@ const ProjectList: React.FC<ProjectListProps> = ({
                      {project.startDate ? new Date(project.startDate).toLocaleDateString() : '未設定日期'} 
                      {project.endDate && ` - ${new Date(project.endDate).toLocaleDateString()}`}
                   </div>
-                  <p className="text-xs text-stone-400">
-                    {project.members.length} 成員 • {project.expenses.length} 筆帳務
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-stone-400">
+                        {project.expenses.length} 筆帳務
+                    </p>
+                    <div className="flex -space-x-2">
+                        {project.members.slice(0, 4).map(m => (
+                            <div key={m.id} className="w-5 h-5 rounded-full ring-2 ring-white">
+                                <Avatar user={m} size="sm" className="w-full h-full text-[8px]" />
+                            </div>
+                        ))}
+                    </div>
+                  </div>
                </div>
                <div className={`w-10 h-10 rounded-full ${themeConfig.secondary} flex items-center justify-center`}>
                   <ArrowRight size={20} className="text-stone-600" />
@@ -218,14 +277,51 @@ const ProjectList: React.FC<ProjectListProps> = ({
           </div>
         ))}
 
-        <button
-          onClick={() => { setEditingProject(null); setIsModalOpen(true); }}
-          className={`w-full py-6 rounded-3xl border-2 border-dashed border-stone-300 text-stone-400 flex items-center justify-center gap-2 hover:border-stone-400 hover:text-stone-500 transition-colors`}
-        >
-          <Plus size={24} />
-          <span className="font-bold">建立新計畫</span>
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+            <button
+            onClick={() => { setEditingProject(null); setIsModalOpen(true); }}
+            className={`py-6 rounded-3xl bg-stone-800 text-stone-50 flex flex-col items-center justify-center gap-2 shadow-lg shadow-stone-200 hover:bg-stone-700 transition-colors`}
+            >
+            <Plus size={24} />
+            <span className="font-bold text-sm">建立新計畫</span>
+            </button>
+
+            <button
+            onClick={() => { setInviteCode(''); setIsJoinModalOpen(true); }}
+            className={`py-6 rounded-3xl bg-white border-2 border-dashed border-stone-200 text-stone-400 flex flex-col items-center justify-center gap-2 hover:border-stone-400 hover:text-stone-500 transition-colors`}
+            >
+            <Users size={24} />
+            <span className="font-bold text-sm">加入計畫</span>
+            </button>
+        </div>
       </div>
+
+      {/* Join Project Modal */}
+      <Modal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} title="加入現有計畫">
+        <div className="pt-4 space-y-6">
+            <div>
+                <label className="block text-sm font-medium text-stone-500 mb-2">請輸入計畫邀請碼 (或貼上完整連結)</label>
+                <div className="flex items-center bg-stone-100 rounded-xl px-4 py-1">
+                    <Link size={20} className="text-stone-400 mr-2" />
+                    <input
+                        type="text"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                        placeholder="例如：ABC-123 或 https://..."
+                        className="w-full bg-transparent py-3 outline-none text-stone-800 font-bold tracking-wide"
+                    />
+                </div>
+                {joinError && <p className="text-red-500 text-xs mt-2 pl-1">{joinError}</p>}
+            </div>
+            <button
+                onClick={handleJoinProject}
+                disabled={!inviteCode}
+                className="w-full py-4 rounded-xl font-bold bg-stone-800 text-white shadow-lg disabled:opacity-50"
+            >
+                加入計畫
+            </button>
+        </div>
+      </Modal>
 
       {/* Create/Edit Project Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingProject ? "編輯計畫" : "建立新計畫"}>
@@ -342,6 +438,14 @@ const ProjectList: React.FC<ProjectListProps> = ({
                    className="w-full border-b border-stone-200 py-2 font-serif text-lg text-stone-800 focus:outline-none focus:border-stone-500"
                 />
              </div>
+             <div>
+                <label className="text-xs font-bold text-stone-400 uppercase">Email (ID)</label>
+                <input 
+                   value={userProfile.email}
+                   disabled
+                   className="w-full border-b border-stone-200 py-2 font-serif text-lg text-stone-400 bg-transparent"
+                />
+             </div>
 
              <div>
                 <label className="text-xs font-bold text-stone-400 uppercase mb-3 block">選擇頭像</label>
@@ -373,7 +477,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
                   <Avatar user={userProfile} size="md" />
                   <div>
                      <h3 className="font-bold text-stone-800">{userProfile.name}</h3>
-                     <p className="text-xs text-stone-400">編輯個人資料</p>
+                     <p className="text-xs text-stone-400">{userProfile.email}</p>
                   </div>
                </div>
                <Edit2 size={16} className="text-stone-300" />
