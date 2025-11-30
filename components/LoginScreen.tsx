@@ -63,33 +63,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo }) => {
         </button>
       </div>
 
-      <div className="w-full max-w-sm space-y-3">
-        <div className="relative flex py-2 items-center">
-            <div className="flex-grow border-t border-stone-300"></div>
-            <span className="flex-shrink-0 mx-4 text-stone-400 text-xs">快速登入</span>
-            <div className="flex-grow border-t border-stone-300"></div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button 
-            onClick={onLogin} // Mock login
-            className="w-full bg-white border border-stone-200 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-stone-50 transition-colors shadow-sm"
-          >
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="Google" />
-            <span className="font-medium text-sm text-stone-600">Google</span>
-          </button>
-
-          <button 
-            onClick={onLogin} // Mock login
-            className="w-full bg-[#06C755] text-white py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-[#05b34c] transition-colors shadow-sm"
-          >
-            <span className="font-bold text-lg">LINE</span>
-          </button>
-        </div>
-
+      <div className="w-full max-w-sm flex justify-center">
         <button 
           onClick={onImportDemo}
-          className="w-full mt-4 text-stone-400 hover:text-stone-600 text-xs py-2 underline underline-offset-4"
+          className="text-stone-400 hover:text-stone-600 text-xs py-2 underline underline-offset-4"
         >
           我想先試用看看 (匯入範例專案)
         </button>
