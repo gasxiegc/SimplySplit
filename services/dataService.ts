@@ -31,6 +31,8 @@ const mapExpense = (e: any): Expense => ({
 export const DataService = {
   // Trigger OAuth Login (Google / LINE)
   loginWithOAuth: async (provider: 'google' | 'line'): Promise<void> => {
+    // Ensure the provider string is passed correctly.
+    // NOTE: If you see "Unsupported provider", you must enable it in Supabase Dashboard.
     const { error } = await supabase.auth.signInWithOAuth({
       provider: provider,
       options: {
@@ -54,10 +56,8 @@ export const DataService = {
 
         if (provider === 'email' && email) {
             // === EMAIL SYNC STRATEGY ===
-            // Try to Sign Up first (Auto Create). If user exists, fall back to Sign In.
-            // We use a default password to allow "Email as ID" behavior without inbox checking for the demo.
-            
-            // Attempt Sign Up
+            // 1. Try to Sign Up (Auto Create)
+            // We use a fixed password to simulate "Email is the ID" behavior.
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                 email: email,
                 password: DEFAULT_SYNC_PASSWORD,
@@ -65,22 +65,33 @@ export const DataService = {
             });
 
             if (signUpError) {
-                // If user already exists, try Sign In
-                if (signUpError.message.includes('already registered') || signUpError.status === 400 || signUpError.status === 422) {
+                // 2. If user already exists, Fallback to Sign In (Sync)
+                // Check for various "User exists" error codes from Supabase
+                if (signUpError.message?.includes('already registered') || 
+                    signUpError.code === 'user_already_exists' || 
+                    (signUpError as any).status === 400 || 
+                    (signUpError as any).status === 422) {
+                     
                      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
                         email: email,
                         password: DEFAULT_SYNC_PASSWORD
                      });
                      
-                     if (signInError) throw signInError;
+                     if (signInError) {
+                        // This happens if the email exists but uses a different password (e.g. manual sign up elsewhere)
+                        console.error("Sign In failed during Sync:", signInError);
+                        throw new Error("此 Email 已註冊且無法自動同步 (密碼錯誤)");
+                     }
                      userId = signInData.user?.id;
                 } else {
+                    // Real error (e.g. Invalid Email)
                     throw signUpError;
                 }
             } else {
-                // Sign Up Successful (or waiting for confirmation if enabled in Supabase)
+                // Sign Up Successful
+                // Check if session is established. If "Confirm Email" is ON in Supabase, session might be null.
                 if (!signUpData.session && !signUpData.user) {
-                     throw new Error("Login failed. Please check if 'Confirm Email' is disabled in Supabase.");
+                     throw new Error("註冊成功但需驗證。請至 Supabase 關閉 Confirm Email 以啟用自動同步登入。");
                 }
                 userId = signUpData.user?.id;
             }
@@ -92,7 +103,7 @@ export const DataService = {
                 if (error) throw error;
                 userId = authData.user?.id;
             } catch (authError: any) {
-                // Fallback for when Anonymous is disabled: Create a shadow guest account
+                // Fallback: Create a shadow guest account if Anonymous is disabled
                 if (authError.message?.includes('Anonymous sign-ins are disabled') || authError.code === 'signup_disabled') {
                     const randomId = Math.random().toString(36).substring(2, 10);
                     const timestamp = Date.now();
@@ -102,6 +113,7 @@ export const DataService = {
                     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                         email: dummyEmail,
                         password: dummyPassword,
+                        options: { data: { full_name: name || 'Guest' } }
                     });
 
                     if (signUpError) throw signUpError;
@@ -115,37 +127,57 @@ export const DataService = {
 
       if (!userId) throw new Error("Login failed: No user ID generated.");
 
-      // 3. Upsert Profile (Sync Name)
+      // 3. Upsert Profile (Sync Name & Avatar)
       const timestamp = new Date().toISOString();
       
-      // If we have a name (from login screen), update it. 
-      // If auto-login, we might just want to fetch.
-      if (name) {
-         const userData = {
-            id: userId,
-            name: name,
-            email: email || session?.user?.email || null,
-            updated_at: timestamp
-         };
+      // Determine metadata to sync (Prioritize input, fallback to OAuth metadata)
+      let finalName = name;
+      let finalAvatar = null;
+      let finalEmail = email || session?.user?.email;
 
-         const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert(userData, { onConflict: 'id' });
+      // If we don't have a name yet (e.g. OAuth login), try to pull from metadata
+      if (!finalName && session?.user?.user_metadata) {
+          const meta = session.user.user_metadata;
+          finalName = meta.full_name || meta.name || meta.user_name;
+          finalAvatar = meta.avatar_url || meta.picture;
+      }
+
+      // Default fallback
+      if (!finalName) finalName = 'User';
+
+      const profilePayload: any = {
+        id: userId,
+        name: finalName,
+        email: finalEmail,
+        updated_at: timestamp
+      };
+
+      // Only update avatar if provided by OAuth
+      if (finalAvatar) {
+          profilePayload.custom_avatar = finalAvatar;
+      }
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert(profilePayload, { onConflict: 'id' });
          
-         if (profileError) {
-             // If profile table missing or RLS error, ignore but log
-             console.error('Error updating profile:', profileError);
-         }
-         return { ...userData, animal: 'bird' } as User; // Default animal if we just created
-      } 
+      if (profileError) {
+         console.error('Error updating profile:', profileError);
+      }
       
-      // Fetch existing profile
+      // Fetch latest profile to return complete User object
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
       if (profile) return mapProfile(profile);
       
-      // Fallback if profile missing
-      return { id: userId, name: name || 'User', animal: 'bird' };
+      // Fallback if fetch fails
+      return { 
+          id: userId, 
+          name: finalName, 
+          email: finalEmail, 
+          animal: 'bird',
+          customAvatar: finalAvatar
+      };
 
     } catch (error) {
       console.error("Login service error:", error);

@@ -32,8 +32,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo }) => {
         msg = 'Supabase 設定錯誤：請啟用 Anonymous Sign-in 或輸入 Email';
       } else if (e.message?.includes('invalid login credentials')) {
         msg = '登入失敗：請確認帳號資訊';
+      } else {
+        msg = `登入失敗: ${e.message}`;
       }
-      alert(`${msg}\n(${e.message})`);
+      alert(msg);
     } finally {
       setLoading(false);
     }
@@ -46,7 +48,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo }) => {
           // Redirect happens automatically
       } catch (e: any) {
           console.error(e);
-          alert(`登入錯誤: ${e.message}\n請確認 Supabase Dashboard 已啟用 ${provider} 登入功能。`);
+          let msg = e.message || '登入錯誤';
+          
+          // Check for specific Supabase error regarding disabled providers
+          if (msg.includes('Unsupported provider') || msg.includes('provider is not enabled')) {
+              msg = `登入失敗：${provider} 登入未啟用。\n\n請至 Supabase Dashboard -> Authentication -> Providers\n啟用 ${provider} 並設定 Client ID / Secret。`;
+          }
+          
+          alert(msg);
           setLoading(false);
       }
   };
