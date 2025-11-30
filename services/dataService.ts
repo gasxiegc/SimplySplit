@@ -1,59 +1,66 @@
 
-import { Project, User, Expense } from '../types';
+import { Project, User } from '../types';
+import { supabase } from '../lib/supabaseClient';
 
-// We simulate a "Cloud Database" using a single global key in LocalStorage.
-// In a real app, this would be your Supabase/Firebase database.
-const DB_PROJECTS_KEY = 'torisplit_db_projects_v3'; 
-const DB_USERS_KEY = 'torisplit_db_users_v3';
 const CURRENT_USER_EMAIL_KEY = 'torisplit_current_user_email';
 const USER_PREF_KEY = 'torisplit_user_pref';
 
-// Simulate network delay for realism
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Helper to handle Storage Quota Errors
-const safeSetItem = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch (e: any) {
-    if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
-      alert("⚠️ 儲存失敗：資料量已達瀏覽器上限。\n\n建議：\n請刪除部分含有圖片的舊帳務以釋放空間。");
-    } else {
-      console.error("LocalStorage Save Error:", e);
-    }
-  }
-};
+// Helper to get local session email (Supabase Auth is better, but keeping your logic for now)
+const getSessionEmail = () => localStorage.getItem(CURRENT_USER_EMAIL_KEY);
 
 export const DataService = {
   
   // --- AUTHENTICATION & USER MANAGEMENT ---
 
-  // Login using Email as the key. 
-  // If user exists in "Cloud DB", return profile. If not, create new.
   login: async (provider: string, email: string, name: string): Promise<User> => {
-    await delay(500);
+    const cleanEmail = email.toLowerCase().trim();
     
-    // 1. Get All Users from "Cloud"
-    const allUsersStr = localStorage.getItem(DB_USERS_KEY);
-    const allUsers: User[] = allUsersStr ? JSON.parse(allUsersStr) : [];
-    
-    // 2. Check if user exists by email
-    let user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    // 1. Check if user exists in Supabase
+    const { data: existingUser, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', cleanEmail)
+      .single();
 
-    if (!user) {
-      // Create new user
-      user = { 
-        id: 'u_' + Date.now() + Math.random().toString(36).substr(2, 5), 
-        name: name || email.split('@')[0], 
-        email: email,
-        animal: 'bird' 
-      };
-      allUsers.push(user);
-      safeSetItem(DB_USERS_KEY, JSON.stringify(allUsers));
+    if (error && error.code !== 'PGRST116') { // PGRST116 is "Row not found"
+      console.error("Login error:", error);
     }
 
-    // 3. Set Session
-    safeSetItem(CURRENT_USER_EMAIL_KEY, user.email);
+    let user: User;
+
+    if (existingUser) {
+      user = {
+        id: existingUser.email, // Use email as ID for simplicity in this migration
+        name: existingUser.name,
+        email: existingUser.email,
+        animal: existingUser.animal as any,
+        customAvatar: existingUser.custom_avatar
+      };
+    } else {
+      // Create new user
+      user = { 
+        id: cleanEmail, 
+        name: name || cleanEmail.split('@')[0], 
+        email: cleanEmail,
+        animal: 'bird' 
+      };
+
+      const { error: insertError } = await supabase.from('users').insert({
+        email: user.email,
+        name: user.name,
+        animal: user.animal,
+        custom_avatar: user.customAvatar
+      });
+      
+      if (insertError) console.error("Create user error:", insertError);
+    }
+
+    // Set Local Session
+    localStorage.setItem(CURRENT_USER_EMAIL_KEY, user.email);
+    
+    // Update local cache for getUserProfile synchronous calls
+    localStorage.setItem('torisplit_user_cache_' + user.email, JSON.stringify(user));
+
     return user;
   },
 
@@ -69,96 +76,101 @@ export const DataService = {
     const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
     if (!email) throw new Error("Not logged in");
 
-    const allUsers: User[] = JSON.parse(localStorage.getItem(DB_USERS_KEY) || '[]');
-    const user = allUsers.find(u => u.email === email);
-    
-    // Fallback if session exists but DB was cleared
-    return user || { id: 'temp', name: 'Guest', email: email, animal: 'bird' };
+    // Try to get from local cache first (for sync rendering)
+    const cached = localStorage.getItem('torisplit_user_cache_' + email);
+    if (cached) return JSON.parse(cached);
+
+    // Fallback default
+    return { id: email, name: 'Loading...', email: email, animal: 'bird' };
   },
 
   updateUserProfile: async (updatedUser: User): Promise<void> => {
-    const allUsers: User[] = JSON.parse(localStorage.getItem(DB_USERS_KEY) || '[]');
-    const index = allUsers.findIndex(u => u.email === updatedUser.email);
-    
-    if (index !== -1) {
-      allUsers[index] = updatedUser;
-      safeSetItem(DB_USERS_KEY, JSON.stringify(allUsers));
-    }
+    // Update local cache
+    localStorage.setItem('torisplit_user_cache_' + updatedUser.email, JSON.stringify(updatedUser));
+
+    // Update Supabase
+    const { error } = await supabase
+      .from('users')
+      .update({
+        name: updatedUser.name,
+        animal: updatedUser.animal,
+        custom_avatar: updatedUser.customAvatar
+      })
+      .eq('email', updatedUser.email);
+
+    if (error) console.error("Update profile error:", error);
   },
 
-  // --- PROJECT MANAGEMENT (MULTIPLAYER) ---
+  // --- PROJECT MANAGEMENT (Supabase) ---
 
-  // Fetch only projects where the current user's email is listed in 'memberEmails'
   getProjects: async (): Promise<Project[]> => {
-    await delay(300);
-    const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
+    const email = getSessionEmail();
     if (!email) return [];
 
-    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
-    
-    // FILTER: Only return projects I am a member of
-    return allProjects.filter(p => 
-      p.memberEmails.some(e => e.toLowerCase() === email.toLowerCase())
-    );
-  },
+    // Select projects where member_emails array contains the user's email
+    const { data, error } = await supabase
+      .from('projects')
+      .select('json_content')
+      .contains('member_emails', [email]);
 
-  // When saving/updating, we write to the Global DB
-  saveProjects: async (projectsToSave: Project[]): Promise<void> => {
-    // This method is legacy-ish. In a DB model, we usually update specific projects.
-    // However, to keep compatibility with App.tsx logic that passes the full list:
-    
-    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
-    
-    // We merge the updated projects into the global DB
-    projectsToSave.forEach(updatedP => {
-      const idx = allProjects.findIndex(p => p.id === updatedP.id);
-      if (idx !== -1) {
-        allProjects[idx] = updatedP;
-      } else {
-        allProjects.push(updatedP);
-      }
-    });
+    if (error) {
+      console.error("Get projects error:", error);
+      return [];
+    }
 
-    safeSetItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
+    return data.map(row => row.json_content as Project);
   },
 
   updateProject: async (updatedProject: Project): Promise<void> => {
-    await delay(200);
-    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
-    const index = allProjects.findIndex(p => p.id === updatedProject.id);
-    
-    if (index !== -1) {
-      allProjects[index] = updatedProject;
-    } else {
-      allProjects.push(updatedProject);
-    }
-    
-    safeSetItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
+    // We store the entire Project object in the 'json_content' column
+    // This preserves your exact data structure without complex relational mapping
+    const { error } = await supabase
+      .from('projects')
+      .upsert({
+        id: updatedProject.id,
+        invite_code: updatedProject.inviteCode,
+        owner_email: updatedProject.ownerEmail,
+        member_emails: updatedProject.memberEmails,
+        json_content: updatedProject,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) console.error("Save project error:", error);
   },
 
   deleteProject: async (projectId: string): Promise<void> => {
-    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
-    const filtered = allProjects.filter(p => p.id !== projectId);
-    safeSetItem(DB_PROJECTS_KEY, JSON.stringify(filtered));
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId);
+
+    if (error) console.error("Delete project error:", error);
   },
 
   // --- JOIN & INVITE LOGIC ---
 
   joinProjectByCode: async (code: string): Promise<Project | null> => {
-    await delay(800);
-    const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
+    const email = getSessionEmail();
     if (!email) throw new Error("Must be logged in to join");
     const me = DataService.getUserProfile();
 
-    const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
-    const project = allProjects.find(p => p.inviteCode === code);
+    // Find project by invite code
+    const { data, error } = await supabase
+      .from('projects')
+      .select('json_content')
+      .eq('invite_code', code)
+      .single();
 
-    if (!project) return null;
+    if (error || !data) {
+      console.error("Join project error or not found:", error);
+      return null;
+    }
+
+    const project = data.json_content as Project;
 
     // Check if already a member
     if (!project.memberEmails.includes(email)) {
       project.memberEmails.push(email);
-      // Also add the User object to members list if not there (for display)
       if (!project.members.find(m => m.email === email)) {
         project.members.push(me);
       }
@@ -191,7 +203,6 @@ export const DataService = {
   createDemoProject: async (): Promise<Project> => {
     const me = DataService.getUserProfile();
     
-    // Generate some fake friends
     const friend1 = { id: 'u_demo_1', name: '小雪', animal: 'rabbit', email: 'snow@demo.com' } as User;
     const friend2 = { id: 'u_demo_2', name: '阿明', animal: 'fox', email: 'ming@demo.com' } as User;
     
@@ -223,16 +234,18 @@ export const DataService = {
       ]
     };
     
+    // Demo projects usually don't need to be saved to DB unless you want to,
+    // but consistent behavior is better.
     await DataService.updateProject(demo);
     return demo;
   },
 
-  // User Preferences
+  // User Preferences (Keep in LocalStorage)
   getTheme: (): string => {
     return localStorage.getItem(USER_PREF_KEY + '_theme') || 'default';
   },
 
   setTheme: (theme: string) => {
-    safeSetItem(USER_PREF_KEY + '_theme', theme);
+    localStorage.setItem(USER_PREF_KEY + '_theme', theme);
   }
 };

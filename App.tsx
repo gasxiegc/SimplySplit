@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Project, Expense, ThemeType } from './types';
 import { DataService } from './services/dataService';
+import { supabase } from './lib/supabaseClient'; // Import Supabase
 import ExpenseList from './components/ExpenseList';
 import ExpenseModal from './components/ExpenseModal';
 import SettlementView from './components/SettlementView';
@@ -37,85 +38,18 @@ const App: React.FC = () => {
   const [editProjCustomCurrency, setEditProjCustomCurrency] = useState('');
   const [editProjSecondaryCurrency, setEditProjSecondaryCurrency] = useState(SECONDARY_CURRENCIES[0]);
 
-  // Handle URL Routing for Join Links (e.g., /join/CODE)
+  // Handle URL Routing
   useEffect(() => {
     const path = window.location.pathname;
-    // Regex to match /join/CODE
     const match = path.match(/^\/join\/([a-zA-Z0-9-]+)/);
     
     if (match && match[1]) {
       const code = match[1];
       console.log("Detected Invite Code:", code);
       setPendingInviteCode(code);
-      // Clean URL visually without reload
       window.history.replaceState({}, '', '/');
     }
   }, []);
-
-  // Initialization & Real-time Sync
-  useEffect(() => {
-    const init = async () => {
-      const savedTheme = DataService.getTheme();
-      if (savedTheme && Object.keys(THEMES).includes(savedTheme)) {
-        setTheme(savedTheme as ThemeType);
-      } else {
-        setTheme('default');
-      }
-      
-      const email = DataService.getCurrentUserEmail();
-      
-      // If we have a pending invite code and user is already logged in, join immediately
-      if (email && pendingInviteCode) {
-         try {
-           const joinedProject = await DataService.joinProjectByCode(pendingInviteCode);
-           if (joinedProject) {
-             setPendingInviteCode(null);
-             // We will load projects below, which will include the new one
-           }
-         } catch (e) {
-           console.error("Auto-join failed", e);
-         }
-      }
-
-      try {
-        if (email) {
-            const data = await DataService.getProjects();
-            setProjects(data);
-            
-            // If we just auto-joined, maybe redirect to that project?
-            // For now, go to project list
-            setView('projects');
-        } else {
-            setView('login');
-        }
-      } catch (e) {
-          setView('login');
-      }
-      setLoading(false);
-    };
-
-    init();
-
-    // PWA Install Prompt
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // Real-time Sync Simulation: Listen for localStorage changes from other tabs
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && e.key.includes('torisplit_db')) {
-        refreshData();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [pendingInviteCode]);
 
   const refreshData = async () => {
     if (DataService.getCurrentUserEmail()) {
@@ -129,6 +63,71 @@ const App: React.FC = () => {
       }
     }
   };
+
+  // Initialization & Real-time Sync
+  useEffect(() => {
+    const init = async () => {
+      const savedTheme = DataService.getTheme();
+      if (savedTheme && Object.keys(THEMES).includes(savedTheme)) {
+        setTheme(savedTheme as ThemeType);
+      } else {
+        setTheme('default');
+      }
+      
+      const email = DataService.getCurrentUserEmail();
+      
+      if (email && pendingInviteCode) {
+         try {
+           const joinedProject = await DataService.joinProjectByCode(pendingInviteCode);
+           if (joinedProject) {
+             setPendingInviteCode(null);
+           }
+         } catch (e) {
+           console.error("Auto-join failed", e);
+         }
+      }
+
+      try {
+        if (email) {
+            // Pre-fill profile cache from Supabase
+            // We do this by calling login silently or just ensuring dataService has loaded
+            const data = await DataService.getProjects();
+            setProjects(data);
+            setView('projects');
+        } else {
+            setView('login');
+        }
+      } catch (e) {
+          setView('login');
+      }
+      setLoading(false);
+    };
+
+    init();
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // --- SUPABASE REALTIME SUBSCRIPTION ---
+    // Listen for changes on the 'projects' table
+    const subscription = supabase
+      .channel('public:projects')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, (payload) => {
+        // When DB changes, refresh local data
+        refreshData();
+      })
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      supabase.removeChannel(subscription);
+    };
+  }, [pendingInviteCode]);
+
+  // ... (Rest of the component remains exactly the same, no changes needed below)
 
   const handleInstallPWA = async () => {
     if (!deferredPrompt) {
@@ -145,7 +144,6 @@ const App: React.FC = () => {
   const handleLogin = async () => {
     setLoading(true);
     
-    // Check pending invite after login
     if (pendingInviteCode) {
       try {
         await DataService.joinProjectByCode(pendingInviteCode);
@@ -186,6 +184,7 @@ const App: React.FC = () => {
   const handleCreateProject = async (name: string, currency: string, startDate?: number, endDate?: number) => {
     setLoading(true);
     const newProject = await DataService.createProject(name, currency, startDate, endDate);
+    // Refresh triggered by Realtime or explicit call
     const updatedList = await DataService.getProjects(); 
     setProjects(updatedList);
     setCurrentProject(newProject);
@@ -194,9 +193,12 @@ const App: React.FC = () => {
   };
 
   const handleUpdateProject = async (updated: Project) => {
-    await DataService.updateProject(updated);
+    // Optimistic Update
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (currentProject?.id === updated.id) setCurrentProject(updated);
+    
+    // Sync to DB
+    await DataService.updateProject(updated);
   };
 
   const handleDeleteProject = async (id: string) => {
