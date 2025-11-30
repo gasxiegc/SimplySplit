@@ -1,11 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Project, ThemeType, User, AnimalType } from '../types';
 import { THEMES, CURRENCIES, ANIMAL_PATHS, PRIMARY_CURRENCIES, SECONDARY_CURRENCIES } from '../constants';
 import { DataService } from '../services/dataService';
 import { Plus, ArrowRight, Settings, Trash2, LogOut, Palette, Edit2, Calendar, Share2, Copy, Check, User as UserIcon, Camera, X, Smartphone, Users, Link } from 'lucide-react';
 import Modal from './ui/Modal';
 import Avatar from './ui/Avatar';
+import { compressImage } from '../utils/imageUtils';
 
 interface ProjectListProps {
   projects: Project[];
@@ -47,6 +48,8 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
   // User Profile State
   const [userProfile, setUserProfile] = useState<User>(DataService.getUserProfile());
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Refresh user profile in case it changed
@@ -142,14 +145,16 @@ const ProjectList: React.FC<ProjectListProps> = ({
     setIsEditProfile(false);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setUserProfile(prev => ({ ...prev, customAvatar: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+       try {
+          // Compressed to max 400px width, 0.6 quality
+          const compressed = await compressImage(file, 400, 0.6); 
+          setUserProfile(prev => ({ ...prev, customAvatar: compressed }));
+       } catch (err) {
+          alert('圖片處理失敗');
+       }
     }
   };
 
@@ -483,15 +488,6 @@ const ProjectList: React.FC<ProjectListProps> = ({
                <Edit2 size={16} className="text-stone-300" />
             </div>
 
-            {/* PWA Install Button */}
-            <button 
-               onClick={onInstallPWA}
-               className="w-full py-3 px-4 bg-stone-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"
-            >
-               <Smartphone size={18} />
-               加入主畫面
-            </button>
-
             {/* Theme Selector (2x2 Grid) */}
             <div>
               <h3 className="text-sm font-bold text-stone-400 uppercase mb-4 flex items-center gap-2">
@@ -512,6 +508,15 @@ const ProjectList: React.FC<ProjectListProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* PWA Install Button */}
+            <button 
+               onClick={onInstallPWA}
+               className="w-full py-3 px-4 border border-stone-200 text-stone-500 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-50"
+            >
+               <Smartphone size={18} />
+               安裝應用程式
+            </button>
 
             <div className="border-t border-stone-100 pt-6">
               <button 

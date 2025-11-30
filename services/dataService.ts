@@ -6,9 +6,23 @@ import { Project, User, Expense } from '../types';
 const DB_PROJECTS_KEY = 'torisplit_db_projects_v3'; 
 const DB_USERS_KEY = 'torisplit_db_users_v3';
 const CURRENT_USER_EMAIL_KEY = 'torisplit_current_user_email';
+const USER_PREF_KEY = 'torisplit_user_pref';
 
 // Simulate network delay for realism
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper to handle Storage Quota Errors
+const safeSetItem = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e: any) {
+    if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+      alert("⚠️ 儲存失敗：資料量已達瀏覽器上限。\n\n建議：\n請刪除部分含有圖片的舊帳務以釋放空間。");
+    } else {
+      console.error("LocalStorage Save Error:", e);
+    }
+  }
+};
 
 export const DataService = {
   
@@ -35,11 +49,11 @@ export const DataService = {
         animal: 'bird' 
       };
       allUsers.push(user);
-      localStorage.setItem(DB_USERS_KEY, JSON.stringify(allUsers));
+      safeSetItem(DB_USERS_KEY, JSON.stringify(allUsers));
     }
 
     // 3. Set Session
-    localStorage.setItem(CURRENT_USER_EMAIL_KEY, user.email);
+    safeSetItem(CURRENT_USER_EMAIL_KEY, user.email);
     return user;
   },
 
@@ -68,7 +82,7 @@ export const DataService = {
     
     if (index !== -1) {
       allUsers[index] = updatedUser;
-      localStorage.setItem(DB_USERS_KEY, JSON.stringify(allUsers));
+      safeSetItem(DB_USERS_KEY, JSON.stringify(allUsers));
     }
   },
 
@@ -105,7 +119,7 @@ export const DataService = {
       }
     });
 
-    localStorage.setItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
+    safeSetItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
   },
 
   updateProject: async (updatedProject: Project): Promise<void> => {
@@ -119,13 +133,13 @@ export const DataService = {
       allProjects.push(updatedProject);
     }
     
-    localStorage.setItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
+    safeSetItem(DB_PROJECTS_KEY, JSON.stringify(allProjects));
   },
 
   deleteProject: async (projectId: string): Promise<void> => {
     const allProjects: Project[] = JSON.parse(localStorage.getItem(DB_PROJECTS_KEY) || '[]');
     const filtered = allProjects.filter(p => p.id !== projectId);
-    localStorage.setItem(DB_PROJECTS_KEY, JSON.stringify(filtered));
+    safeSetItem(DB_PROJECTS_KEY, JSON.stringify(filtered));
   },
 
   // --- JOIN & INVITE LOGIC ---
@@ -219,8 +233,6 @@ export const DataService = {
   },
 
   setTheme: (theme: string) => {
-    localStorage.setItem(USER_PREF_KEY + '_theme', theme);
+    safeSetItem(USER_PREF_KEY + '_theme', theme);
   }
 };
-
-const USER_PREF_KEY = 'torisplit_user_pref';

@@ -5,6 +5,7 @@ import { CATEGORIES } from '../constants';
 import Avatar from './ui/Avatar';
 import * as LucideIcons from 'lucide-react';
 import { Camera, Image as ImageIcon, X } from 'lucide-react';
+import { compressImage } from '../utils/imageUtils';
 
 interface ExpenseModalProps {
   project: Project;
@@ -24,6 +25,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
   const [date, setDate] = useState(Date.now());
   const [receiptImage, setReceiptImage] = useState<string | undefined>(undefined);
   const [touchedSplits, setTouchedSplits] = useState<Set<string>>(new Set());
+  const [isCompressing, setIsCompressing] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -157,14 +159,20 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
     onClose();
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setReceiptImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setIsCompressing(true);
+      try {
+        // Compress to max 800px width, 0.5 quality to save local storage space
+        const compressedBase64 = await compressImage(file, 800, 0.5);
+        setReceiptImage(compressedBase64);
+      } catch (err) {
+        console.error("Compression failed", err);
+        alert("圖片處理失敗，請試試其他圖片");
+      } finally {
+        setIsCompressing(false);
+      }
     }
   };
 
@@ -200,10 +208,11 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
             />
           </div>
           <button 
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => !isCompressing && fileInputRef.current?.click()}
+            disabled={isCompressing}
             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${receiptImage ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}
           >
-            <Camera size={20} />
+            {isCompressing ? <div className="w-4 h-4 border-2 border-stone-400 border-t-transparent rounded-full animate-spin"></div> : <Camera size={20} />}
           </button>
           <input 
             type="file" 
@@ -329,14 +338,14 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
       {/* Save Button */}
       <button
         onClick={handleSave}
-        disabled={!amount || !description}
+        disabled={!amount || !description || isCompressing}
         className={`w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg shadow-stone-200
-          ${(!amount || !description) 
+          ${(!amount || !description || isCompressing) 
             ? 'bg-stone-200 text-stone-400 cursor-not-allowed' 
             : 'bg-stone-800 text-stone-50 hover:bg-stone-700 active:scale-[0.98]'}
         `}
       >
-        {editingExpense ? '更新帳務' : '新增帳務'}
+        {isCompressing ? '處理圖片中...' : (editingExpense ? '更新帳務' : '新增帳務')}
       </button>
     </div>
   );
