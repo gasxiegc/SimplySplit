@@ -1,7 +1,6 @@
-
 {
-  "name": "Simply Split",
-  "short_name": "Simply Split",
+  "name": "ToriSplit",
+  "short_name": "ToriSplit",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#fcfaf5",
