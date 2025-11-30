@@ -64,6 +64,35 @@
         scrollbar-width: none;  /* Firefox */
       }
     </style>
+    <script>
+      // iOS PWA Icon Fix:
+      // iOS doesn't handle SVG in apple-touch-icon well. 
+      // This script converts the SVG to a PNG data URI on the fly.
+      window.addEventListener('load', () => {
+        const link = document.querySelector('link[rel="apple-touch-icon"]');
+        if (link) {
+          const img = new Image();
+          img.src = 'icon.svg'; 
+          img.onload = function() {
+            const canvas = document.createElement('canvas');
+            // 180x180 is the standard size for iPhone
+            canvas.width = 180;
+            canvas.height = 180;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw background explicitly (iOS sometimes ignores transparent backgrounds)
+            ctx.fillStyle = '#4a403c'; 
+            ctx.fillRect(0, 0, 180, 180);
+            
+            // Draw the SVG image
+            ctx.drawImage(img, 0, 0, 180, 180);
+            
+            // Update the link href to the PNG data
+            link.href = canvas.toDataURL('image/png');
+          };
+        }
+      });
+    </script>
 <script type="importmap">
 {
   "imports": {

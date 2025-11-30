@@ -3,7 +3,7 @@
   "short_name": "Simple Split",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#fcfaf5",
+  "background_color": "#4a403c",
   "theme_color": "#fcfaf5",
   "description": "A Zen-inspired expense splitting app.",
   "icons": [

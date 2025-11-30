@@ -2,7 +2,8 @@
   <!-- Background: Deep Stone, full square for iOS/PWA masking -->
   <rect width="512" height="512" fill="#4a403c"/>
   
-  <g transform="translate(256, 256) scale(2.8)">
+  <!-- Reduced scale from 2.8 to 2.2 to ensure safety margin for iOS rounded corners -->
+  <g transform="translate(256, 256) scale(2.2)">
     <g transform="translate(-50, -50)">
       <!-- Green Stone (Top Left) -->
       <path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
