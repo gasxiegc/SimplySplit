@@ -30,52 +30,68 @@ const mapExpense = (e: any): Expense => ({
 export const DataService = {
   // Authentication: Use Supabase Anonymous Auth + Profiles Table
   login: async (provider: string, email?: string, name?: string): Promise<User | null> => {
-    // 1. Check current session
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    let userId = session?.user?.id;
+    try {
+      // 1. Check current session with a timeout to prevent hanging
+      const sessionPromise = supabase.auth.getSession();
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000));
+      
+      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+      
+      let userId = session?.user?.id;
 
-    if (!userId) {
-      // If 'auto' login (app start) and no session, return null to show login screen
+      if (!userId) {
+        // If 'auto' login (app start) and no session, return null to show login screen
+        if (provider === 'auto') return null;
+
+        // 2. Sign in anonymously if not logged in
+        const { data: authData, error } = await supabase.auth.signInAnonymously();
+        if (error) throw error;
+        userId = authData.user?.id;
+      }
+
+      if (!userId) throw new Error("Login failed");
+
+      // 3. Upsert Profile
+      const timestamp = new Date().toISOString();
+      
+      if (name) {
+         // Update existing or create new with provided name
+         const userData = {
+            id: userId,
+            name: name,
+            email: email || null,
+            animal: 'bird', // Default
+            updated_at: timestamp
+         };
+
+         const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(userData, { onConflict: 'id' });
+         
+         if (profileError) console.error('Error updating profile:', profileError);
+         return { ...userData, customAvatar: undefined } as User;
+      } else {
+         // Fetch existing profile
+         const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+         
+         if (profile) return mapProfile(profile);
+         
+         // Fallback if profile missing but auth exists (should rarely happen)
+         const newProfile = { id: userId, name: '我', animal: 'bird', updated_at: timestamp };
+         const { error: insertError } = await supabase.from('profiles').insert(newProfile);
+         
+         if (insertError) {
+             console.error("Profile creation failed:", insertError);
+             // If table doesn't exist or RLS issue, return a dummy user so app doesn't crash
+             return { id: userId, name: 'Guest', animal: 'bird' };
+         }
+         return mapProfile(newProfile);
+      }
+    } catch (error) {
+      console.error("Login service error:", error);
+      // If auto-login fails, return null so user sees login screen instead of infinite loader
       if (provider === 'auto') return null;
-
-      // 2. Sign in anonymously if not logged in
-      const { data: authData, error } = await supabase.auth.signInAnonymously();
-      if (error) throw error;
-      userId = authData.user?.id;
-    }
-
-    if (!userId) throw new Error("Login failed");
-
-    // 3. Upsert Profile
-    const timestamp = new Date().toISOString();
-    
-    if (name) {
-       // Update existing or create new with provided name
-       const userData = {
-          id: userId,
-          name: name,
-          email: email || null,
-          animal: 'bird', // Default
-          updated_at: timestamp
-       };
-
-       const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert(userData, { onConflict: 'id' });
-       
-       if (profileError) console.error('Error updating profile:', profileError);
-       return { ...userData, customAvatar: undefined } as User;
-    } else {
-       // Fetch existing profile
-       const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
-       
-       if (profile) return mapProfile(profile);
-       
-       // Fallback if profile missing but auth exists (should rarely happen)
-       const newProfile = { id: userId, name: '我', animal: 'bird', updated_at: timestamp };
-       await supabase.from('profiles').insert(newProfile);
-       return mapProfile(newProfile);
+      throw error;
     }
   },
 
@@ -98,49 +114,54 @@ export const DataService = {
   },
 
   getProjects: async (): Promise<Project[]> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
 
-    // 1. Get Project IDs where current user is a member
-    const { data: memberRows, error: memberError } = await supabase
-      .from('project_members')
-      .select('project_id')
-      .eq('user_id', user.id);
+      // 1. Get Project IDs where current user is a member
+      const { data: memberRows, error: memberError } = await supabase
+        .from('project_members')
+        .select('project_id')
+        .eq('user_id', user.id);
 
-    if (memberError || !memberRows) return [];
-    
-    const projectIds = memberRows.map(r => r.project_id);
-    if (projectIds.length === 0) return [];
+      if (memberError || !memberRows) return [];
+      
+      const projectIds = memberRows.map(r => r.project_id);
+      if (projectIds.length === 0) return [];
 
-    // 2. Fetch Projects with their members and expenses
-    const { data: projectsData, error: projError } = await supabase
-      .from('projects')
-      .select(`
-        *,
-        expenses (*),
-        members:project_members (
-          profiles (*)
-        )
-      `)
-      .in('id', projectIds)
-      .order('created_at', { ascending: false });
+      // 2. Fetch Projects with their members and expenses
+      const { data: projectsData, error: projError } = await supabase
+        .from('projects')
+        .select(`
+          *,
+          expenses (*),
+          members:project_members (
+            profiles (*)
+          )
+        `)
+        .in('id', projectIds)
+        .order('created_at', { ascending: false });
 
-    if (projError) {
-      console.error('Fetch projects error:', projError);
+      if (projError) {
+        console.error('Fetch projects error:', projError);
+        return [];
+      }
+
+      // 3. Transform Data to match Typescript Interface
+      return projectsData.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        currency: p.currency,
+        inviteCode: p.invite_code,
+        startDate: p.start_date,
+        endDate: p.end_date,
+        members: p.members.map((m: any) => mapProfile(m.profiles)),
+        expenses: (p.expenses || []).map(mapExpense)
+      }));
+    } catch (e) {
+      console.error("Get projects error", e);
       return [];
     }
-
-    // 3. Transform Data to match Typescript Interface
-    return projectsData.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      currency: p.currency,
-      inviteCode: p.invite_code,
-      startDate: p.start_date,
-      endDate: p.end_date,
-      members: p.members.map((m: any) => mapProfile(m.profiles)),
-      expenses: (p.expenses || []).map(mapExpense)
-    }));
   },
 
   saveProjects: async (projects: Project[]): Promise<void> => {

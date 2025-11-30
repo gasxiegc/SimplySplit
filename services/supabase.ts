@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 // Helper to safely access environment variables in different environments
@@ -24,14 +25,15 @@ const getEnvVar = (key: string) => {
   return undefined;
 };
 
-const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
-const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
+// Use provided credentials as default fallback if env vars are missing
+const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || 'https://vyfwvjtsmlvduqmphoxj.supabase.co';
+const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5Znd2anRzbWx2ZHVxbXBob3hqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0Njk1MjgsImV4cCI6MjA4MDA0NTUyOH0.b3RrFIq7xmVIuAURiRSjZ-BjC0apvAiTij1Cs2GOaDg';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️ Supabase connection details are missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment variables.');
+  console.warn('⚠️ Supabase connection details are missing.');
 }
 
 export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co', 
-  supabaseAnonKey || 'placeholder'
+  supabaseUrl, 
+  supabaseAnonKey
 );
