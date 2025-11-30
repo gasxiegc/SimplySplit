@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bird, Mail, User as UserIcon, Link } from 'lucide-react';
 import { DataService } from '../services/dataService';
+import { supabase } from '../lib/supabaseClient';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -13,6 +14,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo, pendin
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [demoRows, setDemoRows] = useState<any[]>([]);
+
+  // Example: Query Supabase data on mount
+  useEffect(() => {
+    async function load() {
+      try {
+        // Querying 'projects' table as a connection test
+        const { data, error } = await supabase.from('projects').select('*').limit(3);
+        if (!error && data) {
+          setDemoRows(data);
+        } else if (error) {
+          console.debug("Supabase connection check:", error.message);
+        }
+      } catch (e) {
+        // Supabase might not be configured yet
+      }
+    }
+    load();
+  }, []);
 
   const handleStandardLogin = async () => {
     if (!name) {
@@ -100,7 +120,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo, pendin
         </button>
       </div>
 
-      <div className="w-full max-w-sm flex justify-center">
+      <div className="w-full max-w-sm flex flex-col items-center gap-4">
         <button 
           onClick={handleDemo}
           disabled={isLoading}
@@ -108,6 +128,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo, pendin
         >
           我想先試用看看 (自動建立試用帳號)
         </button>
+
+        {/* Demo Data Display */}
+        {demoRows.length > 0 && (
+          <div className="w-full bg-stone-100 p-4 rounded-2xl text-xs overflow-hidden">
+            <h3 className="font-bold text-stone-500 mb-2">Supabase 連線測試 (Projects Table):</h3>
+            <pre className="text-stone-600 overflow-x-auto">
+              {JSON.stringify(demoRows, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     </div>
   );
