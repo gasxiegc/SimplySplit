@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
-    <link rel="apple-touch-icon" href="icon.svg" />
+    <!-- Added ID for easier Javascript access -->
+    <link rel="apple-touch-icon" id="apple-touch-icon" href="icon.svg" />
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#fcfaf5" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -47,6 +48,41 @@
         }
       }
     </script>
+    <script>
+      // iOS Icon Fix (Immediate Execution)
+      // We inline the SVG data and convert it to PNG immediately to ensure
+      // it's ready when the user taps "Add to Home Screen".
+      (function() {
+        var svgSource = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#4a403c"/><g transform="translate(256, 256) scale(2.2)"><g transform="translate(-50, -50)"><path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g></g></svg>';
+        
+        var img = new Image();
+        // Use btoa to base64 encode the SVG string
+        img.src = 'data:image/svg+xml;base64,' + btoa(svgSource);
+        
+        img.onload = function() {
+          var canvas = document.createElement('canvas');
+          canvas.width = 180;
+          canvas.height = 180;
+          var ctx = canvas.getContext('2d');
+          
+          // Draw background explicitly
+          ctx.fillStyle = '#4a403c';
+          ctx.fillRect(0, 0, 180, 180);
+          
+          // Draw the SVG icon
+          ctx.drawImage(img, 0, 0, 180, 180);
+          
+          // Convert to PNG data URI
+          var pngData = canvas.toDataURL('image/png');
+          
+          // Update the link tag
+          var link = document.getElementById('apple-touch-icon');
+          if (link) {
+            link.href = pngData;
+          }
+        };
+      })();
+    </script>
     <style>
       body {
         background-color: #fcfaf5;
@@ -64,35 +100,6 @@
         scrollbar-width: none;  /* Firefox */
       }
     </style>
-    <script>
-      // iOS PWA Icon Fix:
-      // iOS doesn't handle SVG in apple-touch-icon well. 
-      // This script converts the SVG to a PNG data URI on the fly.
-      window.addEventListener('load', () => {
-        const link = document.querySelector('link[rel="apple-touch-icon"]');
-        if (link) {
-          const img = new Image();
-          img.src = 'icon.svg'; 
-          img.onload = function() {
-            const canvas = document.createElement('canvas');
-            // 180x180 is the standard size for iPhone
-            canvas.width = 180;
-            canvas.height = 180;
-            const ctx = canvas.getContext('2d');
-            
-            // Draw background explicitly (iOS sometimes ignores transparent backgrounds)
-            ctx.fillStyle = '#4a403c'; 
-            ctx.fillRect(0, 0, 180, 180);
-            
-            // Draw the SVG image
-            ctx.drawImage(img, 0, 0, 180, 180);
-            
-            // Update the link href to the PNG data
-            link.href = canvas.toDataURL('image/png');
-          };
-        }
-      });
-    </script>
 <script type="importmap">
 {
   "imports": {
