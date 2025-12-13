@@ -52,9 +52,8 @@
     <script>
       // iOS Icon Fix (Immediate Execution)
       (function() {
-        // FIXED: Added width="512" height="512" to the SVG tag. 
-        // Without explicit dimensions, canvas.drawImage often fails to render SVGs on some browsers.
-        var svgSource = '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#4a403c"/><g transform="translate(256, 256) scale(2.2)"><g transform="translate(-50, -50)"><path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g></g></svg>';
+        // FIXED: Updated SVG source to match the new icon.svg design
+        var svgSource = '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#4a403c"/><g transform="translate(256, 256)"><circle cx="0" cy="0" r="190" fill="none" stroke="#fcfaf5" stroke-width="35" /><path d="M-160 160 L160 -160" stroke="#4a403c" stroke-width="50" stroke-linecap="square" /><circle cx="-70" cy="70" r="40" fill="#8fa892" /><circle cx="70" cy="-70" r="40" fill="#d68c76" /></g></svg>';
         
         var img = new Image();
         // Use btoa to base64 encode the SVG string

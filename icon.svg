@@ -1,14 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Background: Deep Stone, full square for iOS/PWA masking -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background: Deep Stone -->
   <rect width="512" height="512" fill="#4a403c"/>
   
-  <!-- Reduced scale from 2.8 to 2.2 to ensure safety margin for iOS rounded corners -->
-  <g transform="translate(256, 256) scale(2.2)">
-    <g transform="translate(-50, -50)">
-      <!-- Green Stone (Top Left) -->
-      <path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-      <!-- White Stone (Bottom Right) -->
-      <path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    </g>
+  <g transform="translate(256, 256)">
+    <!-- Outer Coin Ring (Kinari White) -->
+    <circle cx="0" cy="0" r="190" fill="none" stroke="#fcfaf5" stroke-width="35" />
+    
+    <!-- The Split Line (Background Color to create cut effect) -->
+    <path d="M-160 160 L160 -160" stroke="#4a403c" stroke-width="50" stroke-linecap="square" />
+    
+    <!-- Dot 1 (Nature Green) -->
+    <circle cx="-70" cy="70" r="40" fill="#8fa892" />
+    
+    <!-- Dot 2 (Clay Orange) -->
+    <circle cx="70" cy="-70" r="40" fill="#d68c76" />
   </g>
 </svg>

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Mail, User as UserIcon, Link } from 'lucide-react';
 import { DataService } from '../services/dataService';
@@ -44,11 +43,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onImportDemo, pendin
       <div className="mb-8 text-center">
         <div className="w-24 h-24 bg-stone-800 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl animate-bounce-slow overflow-hidden">
            {/* Inline SVG Logo to ensure it renders correctly without external requests */}
-           <svg className="w-16 h-16" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-             {/* Green Stone (Top Left) */}
-             <path d="M30 25 C 20 25 15 35 20 45 L 45 20 C 35 15 25 20 30 25" stroke="#8fa892" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/>
-             {/* White Stone (Bottom Right) */}
-             <path d="M70 75 C 80 75 85 65 80 55 L 55 80 C 65 85 75 80 70 75" stroke="#fcfaf5" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/>
+           <svg className="w-16 h-16" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+             <g transform="translate(256, 256)">
+                {/* Outer Ring */}
+                <circle cx="0" cy="0" r="190" fill="none" stroke="#fcfaf5" strokeWidth="35" />
+                {/* Split Line */}
+                <path d="M-160 160 L160 -160" stroke="#4a403c" strokeWidth="50" strokeLinecap="square" />
+                {/* Dots */}
+                <circle cx="-70" cy="70" r="40" fill="#8fa892" />
+                <circle cx="70" cy="-70" r="40" fill="#d68c76" />
+             </g>
            </svg>
         </div>
         <h1 className="text-4xl font-serif font-bold mb-2 tracking-wide">Simple Split</h1>
