@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { Project, Expense, ThemeType } from './types';
+import { Project, Expense, ThemeType, User } from './types';
 import { DataService } from './services/dataService';
 import { supabase } from './lib/supabaseClient'; // Import Supabase
 import ExpenseList from './components/ExpenseList';
@@ -10,7 +9,8 @@ import StatsView from './components/StatsView';
 import LoginScreen from './components/LoginScreen';
 import ProjectList from './components/ProjectList';
 import Modal from './components/ui/Modal';
-import { Plus, List, PieChart, RefreshCw, Share2, ArrowLeft, Edit2, Copy, Check } from 'lucide-react';
+import Avatar from './components/ui/Avatar';
+import { Plus, List, PieChart, RefreshCw, Share2, ArrowLeft, Edit2, Copy, Check, Users, UserX, ShieldCheck } from 'lucide-react';
 import { THEMES, PRIMARY_CURRENCIES, SECONDARY_CURRENCIES } from './constants';
 
 const App: React.FC = () => {
@@ -24,11 +24,13 @@ const App: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   
   const [theme, setTheme] = useState<ThemeType>('default');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Edit Project State
   const [editProjName, setEditProjName] = useState('');
@@ -88,6 +90,8 @@ const App: React.FC = () => {
 
       try {
         if (email) {
+            const profile = DataService.getUserProfile();
+            setCurrentUser(profile);
             const data = await DataService.getProjects();
             setProjects(data);
             setView('projects');
@@ -145,6 +149,9 @@ const App: React.FC = () => {
       }
     }
 
+    const email = DataService.getCurrentUserEmail();
+    if (email) setCurrentUser(DataService.getUserProfile());
+
     const data = await DataService.getProjects();
     setProjects(data);
     setView('projects');
@@ -157,6 +164,7 @@ const App: React.FC = () => {
     const data = await DataService.getProjects();
     setProjects(data);
     setCurrentProject(demo);
+    setCurrentUser(DataService.getUserProfile());
     setView('dashboard');
     setLoading(false);
   };
@@ -165,6 +173,7 @@ const App: React.FC = () => {
     DataService.logout();
     setView('login');
     setCurrentProject(null);
+    setCurrentUser(null);
     setPendingInviteCode(null);
   };
 
@@ -192,6 +201,33 @@ const App: React.FC = () => {
   const handleDeleteProject = async (id: string) => {
     await DataService.deleteProject(id);
     setProjects(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!currentProject || !currentUser) return;
+    const isOwner = currentProject.ownerEmail === currentUser.email;
+    if (!isOwner) return;
+
+    const userToRemove = currentProject.members.find(m => m.id === userId);
+    if (!userToRemove || userToRemove.email === currentProject.ownerEmail) {
+      alert("無法移除計畫建立人");
+      return;
+    }
+
+    if (window.confirm(`確定要將 ${userToRemove.name} 從計畫中移除嗎？`)) {
+      const updatedMembers = currentProject.members.filter(m => m.id !== userId);
+      const updatedEmails = currentProject.memberEmails.filter(email => email !== userToRemove.email);
+      
+      const updatedProject = {
+        ...currentProject,
+        members: updatedMembers,
+        memberEmails: updatedEmails
+      };
+      
+      setCurrentProject(updatedProject);
+      await DataService.updateProject(updatedProject);
+      setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+    }
   };
 
   const openEditProjectModal = () => {
@@ -356,7 +392,9 @@ const App: React.FC = () => {
     );
   }
 
-  if (!currentProject) return null;
+  if (!currentProject || !currentUser) return null;
+
+  const isOwner = currentProject.ownerEmail === currentUser.email;
 
   return (
     <div className={`min-h-screen ${themeConfig.bg} ${themeConfig.text} font-sans selection:bg-stone-200 transition-colors duration-500`}>
@@ -366,13 +404,20 @@ const App: React.FC = () => {
             <ArrowLeft size={24} />
           </button>
           <div className="overflow-hidden">
-            <h1 className="font-serif font-bold text-xl leading-tight truncate max-w-[200px]">{currentProject.name}</h1>
+            <h1 className="font-serif font-bold text-xl leading-tight truncate max-w-[160px]">{currentProject.name}</h1>
             <p className="text-[10px] opacity-60 font-medium tracking-wide">
               {currentProject.members.length} 成員 • {currentProject.currency}
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1">
+           <button 
+             onClick={() => setIsMembersModalOpen(true)}
+             className="p-2 rounded-full hover:bg-black/5 transition-colors text-stone-600"
+             title="管理成員"
+           >
+             <Users size={20} />
+           </button>
            <button 
              onClick={openEditProjectModal}
              className="p-2 rounded-full hover:bg-black/5 transition-colors text-stone-600"
@@ -547,6 +592,56 @@ const App: React.FC = () => {
 
       <Modal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="分享計畫">
           {currentProject && <ShareOptions project={currentProject} />}
+      </Modal>
+
+      <Modal isOpen={isMembersModalOpen} onClose={() => setIsMembersModalOpen(false)} title="參與成員">
+          <div className="space-y-4 pt-2">
+            <div className="flex justify-between items-center mb-2 px-1">
+              <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">{currentProject.members.length} 位成員</span>
+            </div>
+            <div className="space-y-3">
+              {currentProject.members.map(member => {
+                const isMemberOwner = member.email === currentProject.ownerEmail;
+                return (
+                  <div key={member.id} className="flex items-center justify-between p-3 rounded-2xl bg-white border border-stone-100 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <Avatar user={member} size="md" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-stone-800">{member.name}</span>
+                          {isMemberOwner && (
+                            <span className="flex items-center gap-1 bg-stone-800 text-stone-50 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                              <ShieldCheck size={10} />
+                              建立人
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-stone-400">{member.email}</p>
+                      </div>
+                    </div>
+                    
+                    {isOwner && !isMemberOwner && (
+                      <button 
+                        onClick={() => handleRemoveMember(member.id)}
+                        className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                        title="從計畫中移除"
+                      >
+                        <UserX size={18} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            
+            <button 
+              onClick={() => { setIsMembersModalOpen(false); setIsShareModalOpen(true); }}
+              className="w-full mt-4 py-3 border-2 border-dashed border-stone-200 text-stone-400 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:border-stone-400 hover:text-stone-500 transition-all"
+            >
+              <Plus size={16} />
+              邀請更多成員
+            </button>
+          </div>
       </Modal>
 
     </div>

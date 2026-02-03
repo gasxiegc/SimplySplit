@@ -3,7 +3,7 @@ import { Project, SplitMode, Expense } from '../types';
 import { CATEGORIES } from '../constants';
 import Avatar from './ui/Avatar';
 import * as LucideIcons from 'lucide-react';
-import { Camera, X, Calendar, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Camera, X, Calendar, Plus, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import { compressImage } from '../utils/imageUtils';
 
 interface ExpenseModalProps {
@@ -31,6 +31,8 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const amount = parseFloat(amountStr) || 0;
+
   useEffect(() => {
     setTouchedSplits(new Set());
 
@@ -51,14 +53,12 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
       }
     } else {
         setDate(Date.now());
-        const equalShare = (parseFloat(amountStr) || 0) / project.members.length;
+        const equalShare = (amount || 0) / project.members.length;
         const initMap: any = {};
         project.members.forEach(m => initMap[m.id] = equalShare.toFixed(0));
         setCustomAmounts(initMap);
     }
   }, [editingExpense]);
-
-  const amount = parseFloat(amountStr) || 0;
 
   useEffect(() => {
     if (splitMode === 'equal') {
@@ -71,7 +71,14 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
   }, [amount, splitMode, project.members.length]);
 
   const handleCustomAmountChange = (userId: string, newValueStr: string) => {
-      const newMap = { ...customAmounts, [userId]: newValueStr };
+      // Prevent negative values
+      let val = parseFloat(newValueStr) || 0;
+      if (val < 0) val = 0;
+      
+      // RULE: Individual split cannot exceed total amount
+      if (val > amount) val = amount;
+
+      const newMap = { ...customAmounts, [userId]: val.toString() };
       const newTouched = new Set<string>(touchedSplits);
       newTouched.add(userId);
       setTouchedSplits(newTouched);
@@ -81,34 +88,34 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
           touchedSum += parseFloat(newMap[id]) || 0;
       });
 
+      // Recalculate remaining for untouched members
       const remaining = amount - touchedSum;
       const untouchedUsers = project.members.filter(m => !newTouched.has(m.id));
 
       if (untouchedUsers.length > 0) {
-          const share = Math.floor(remaining / untouchedUsers.length);
+          // If remaining is negative (touched sum exceeds total), force remaining to 0 and distribute 0
+          const validRemaining = Math.max(0, remaining);
+          const share = Math.floor(validRemaining / untouchedUsers.length);
           untouchedUsers.forEach((m, index) => {
               if (index === untouchedUsers.length - 1) {
                   const currentSum = share * (untouchedUsers.length - 1);
-                  newMap[m.id] = (remaining - currentSum).toFixed(0);
+                  newMap[m.id] = (validRemaining - currentSum).toFixed(0);
               } else {
                   newMap[m.id] = share.toFixed(0);
               }
           });
       } else {
-          const lastMember = project.members[project.members.length - 1];
-          if (lastMember.id !== userId) {
-             let currentTotalExcludingLast = 0;
-             project.members.forEach(m => {
-                 if (m.id !== lastMember.id) {
-                     currentTotalExcludingLast += parseFloat(newMap[m.id]) || 0;
-                 }
-             });
-             const diff = amount - currentTotalExcludingLast;
-             newMap[lastMember.id] = diff.toFixed(0);
-          }
+          // If all members are touched, ensure the last modified one doesn't break the sum
+          // Or just let it be and rely on the validation warning
       }
       setCustomAmounts(newMap);
   };
+
+  const getSplitsSum = () => {
+    return project.members.reduce((sum, m) => sum + (parseFloat(customAmounts[m.id]) || 0), 0);
+  };
+
+  const isSumValid = splitMode === 'equal' || Math.abs(getSplitsSum() - amount) < 1;
 
   const getSplits = () => {
     if (splitMode === 'equal') {
@@ -123,7 +130,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
   };
 
   const handleSave = () => {
-    if (!amount || !description) return;
+    if (!amount || !description || !isSumValid) return;
     onSave(amount, description, payerId, getSplits(), category, date, receiptImages, editingExpense?.id, customCategory);
     onClose();
   };
@@ -133,7 +140,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
     if (files && files.length > 0) {
       setIsCompressing(true);
       try {
-        const uploadPromises = Array.from(files).map((file: File) => compressImage(file, 1200, 0.6)); // Slightly higher quality for viewing
+        const uploadPromises = Array.from(files).map((file: File) => compressImage(file, 1200, 0.6));
         const newImages = await Promise.all(uploadPromises);
         setReceiptImages(prev => [...prev, ...newImages]);
       } catch (err) {
@@ -317,46 +324,60 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
         </div>
 
         <div className="space-y-2">
-          {project.members.map(member => (
-            <div key={member.id} className="flex items-center justify-between p-3 rounded-xl bg-stone-50 border border-stone-100">
-              <div className="flex items-center gap-3">
-                <Avatar user={member} size="sm" />
-                <span className="text-stone-700">{member.name}</span>
-              </div>
-              
-              {splitMode === 'equal' ? (
-                 <span className="font-serif text-stone-500">
-                   {(amount / project.members.length).toFixed(0)}
-                 </span>
-              ) : (
-                <div className="flex items-center gap-1 border-b border-stone-300 focus-within:border-stone-500">
-                  <span className="text-stone-400 text-sm">{project.currency === 'JPY' ? '¥' : '$'}</span>
-                  <input
-                    type="number"
-                    value={customAmounts[member.id] || ''}
-                    onChange={(e) => handleCustomAmountChange(member.id, e.target.value)}
-                    className="w-20 text-right bg-transparent focus:outline-none font-serif text-stone-800"
-                    placeholder="0"
-                    step="1"
-                  />
+          {project.members.map(member => {
+            const memberAmount = parseFloat(customAmounts[member.id]) || 0;
+            const isInvalid = splitMode === 'custom' && memberAmount > amount;
+            
+            return (
+              <div key={member.id} className="flex items-center justify-between p-3 rounded-xl bg-stone-50 border border-stone-100">
+                <div className="flex items-center gap-3">
+                  <Avatar user={member} size="sm" />
+                  <span className="text-stone-700">{member.name}</span>
                 </div>
-              )}
-            </div>
-          ))}
+                
+                {splitMode === 'equal' ? (
+                  <span className="font-serif text-stone-500">
+                    {(amount / project.members.length).toFixed(0)}
+                  </span>
+                ) : (
+                  <div className={`flex items-center gap-1 border-b ${isInvalid ? 'border-red-400 text-red-500' : 'border-stone-300 text-stone-800'} focus-within:border-stone-500 transition-colors`}>
+                    <span className="text-stone-400 text-sm">{project.currency === 'JPY' ? '¥' : '$'}</span>
+                    <input
+                      type="number"
+                      value={customAmounts[member.id] || ''}
+                      onChange={(e) => handleCustomAmountChange(member.id, e.target.value)}
+                      className="w-20 text-right bg-transparent focus:outline-none font-serif"
+                      placeholder="0"
+                      step="1"
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      <button
-        onClick={handleSave}
-        disabled={!amount || !description || isCompressing}
-        className={`w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg shadow-stone-200
-          ${(!amount || !description || isCompressing) 
-            ? 'bg-stone-200 text-stone-400 cursor-not-allowed' 
-            : 'bg-stone-800 text-stone-50 hover:bg-stone-700 active:scale-[0.98]'}
-        `}
-      >
-        {isCompressing ? '處理圖片中...' : (editingExpense ? '更新帳務' : '新增帳務')}
-      </button>
+      <div className="space-y-3">
+        {splitMode === 'custom' && !isSumValid && amount > 0 && (
+          <div className="flex items-center justify-center gap-2 text-red-500 bg-red-50 py-2 rounded-xl text-xs font-bold animate-pulse">
+            <AlertCircle size={14} />
+            <span>目前總計: {getSplitsSum().toFixed(0)} / 應為: {amount.toFixed(0)}</span>
+          </div>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={!amount || !description || isCompressing || !isSumValid}
+          className={`w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg shadow-stone-200
+            ${(!amount || !description || isCompressing || !isSumValid) 
+              ? 'bg-stone-200 text-stone-400 cursor-not-allowed' 
+              : 'bg-stone-800 text-stone-50 hover:bg-stone-700 active:scale-[0.98]'}
+          `}
+        >
+          {isCompressing ? '處理圖片中...' : (editingExpense ? '更新帳務' : '新增帳務')}
+        </button>
+      </div>
 
       {/* Image Gallery Viewer Overlay */}
       {viewerIndex !== null && (
