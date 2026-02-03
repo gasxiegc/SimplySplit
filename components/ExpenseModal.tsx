@@ -3,7 +3,7 @@ import { Project, SplitMode, Expense } from '../types';
 import { CATEGORIES } from '../constants';
 import Avatar from './ui/Avatar';
 import * as LucideIcons from 'lucide-react';
-import { Camera, X, Calendar, Plus } from 'lucide-react';
+import { Camera, X, Calendar, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { compressImage } from '../utils/imageUtils';
 
 interface ExpenseModalProps {
@@ -25,6 +25,9 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
   const [receiptImages, setReceiptImages] = useState<string[]>([]);
   const [touchedSplits, setTouchedSplits] = useState<Set<string>>(new Set());
   const [isCompressing, setIsCompressing] = useState(false);
+  
+  // Image Viewer State
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -130,7 +133,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
     if (files && files.length > 0) {
       setIsCompressing(true);
       try {
-        const uploadPromises = Array.from(files).map((file: File) => compressImage(file, 800, 0.5));
+        const uploadPromises = Array.from(files).map((file: File) => compressImage(file, 1200, 0.6)); // Slightly higher quality for viewing
         const newImages = await Promise.all(uploadPromises);
         setReceiptImages(prev => [...prev, ...newImages]);
       } catch (err) {
@@ -143,11 +146,22 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
     }
   };
 
-  const removeImage = (index: number) => {
+  const removeImage = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
     setReceiptImages(prev => prev.filter((_, i) => i !== index));
+    if (viewerIndex === index) setViewerIndex(null);
   };
 
   const dateString = new Date(date).toISOString().split('T')[0];
+
+  const navigateViewer = (direction: 'prev' | 'next') => {
+    if (viewerIndex === null) return;
+    if (direction === 'prev') {
+      setViewerIndex(viewerIndex > 0 ? viewerIndex - 1 : receiptImages.length - 1);
+    } else {
+      setViewerIndex(viewerIndex < receiptImages.length - 1 ? viewerIndex + 1 : 0);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full gap-6">
@@ -212,10 +226,14 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
         {receiptImages.length > 0 && (
           <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
             {receiptImages.map((imgData, idx) => (
-              <div key={idx} className="relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-sm group">
+              <div 
+                key={idx} 
+                onClick={() => setViewerIndex(idx)}
+                className="relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-sm group cursor-pointer active:scale-95 transition-transform"
+              >
                 <img src={imgData} alt={`Receipt ${idx}`} className="w-full h-full object-cover" />
                 <button 
-                  onClick={() => removeImage(idx)}
+                  onClick={(e) => removeImage(e, idx)}
                   className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white hover:bg-red-500 transition-colors"
                 >
                   <X size={14} />
@@ -339,6 +357,49 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
       >
         {isCompressing ? '處理圖片中...' : (editingExpense ? '更新帳務' : '新增帳務')}
       </button>
+
+      {/* Image Gallery Viewer Overlay */}
+      {viewerIndex !== null && (
+        <div 
+          className="fixed inset-0 z-[60] bg-stone-900/95 flex flex-col items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setViewerIndex(null)}
+        >
+          <button 
+            className="absolute top-6 right-6 z-[70] p-3 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"
+            onClick={() => setViewerIndex(null)}
+          >
+            <X size={24} />
+          </button>
+
+          {receiptImages.length > 1 && (
+            <>
+              <button 
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-[70] p-4 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"
+                onClick={(e) => { e.stopPropagation(); navigateViewer('prev'); }}
+              >
+                <ChevronLeft size={32} />
+              </button>
+              <button 
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-[70] p-4 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"
+                onClick={(e) => { e.stopPropagation(); navigateViewer('next'); }}
+              >
+                <ChevronRight size={32} />
+              </button>
+            </>
+          )}
+
+          <div className="relative max-w-full max-h-[80vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <img 
+              src={receiptImages[viewerIndex]} 
+              alt="Receipt Preview" 
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            />
+            <div className="absolute -bottom-10 left-0 right-0 text-center text-white/60 text-sm font-medium">
+              {viewerIndex + 1} / {receiptImages.length}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
