@@ -27,14 +27,10 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
   };
 
   const downloadCSV = () => {
-    // Basic Headers
     const headers = ['Date', 'Description', 'Category', 'Payer', 'Total Amount', 'Currency'];
-    
-    // Add Member Headers for Split Details
     project.members.forEach(m => headers.push(m.name));
 
     const rows = sortedExpenses.map(e => {
-      // Basic Data
       const row = [
         new Date(e.date).toLocaleDateString(),
         e.description,
@@ -44,7 +40,6 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
         project.currency
       ];
 
-      // Add Split Amount for each member
       project.members.forEach(m => {
         const split = e.splits.find(s => s.userId === m.id);
         row.push(split ? split.amount : 0);
@@ -67,7 +62,6 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
 
   return (
     <div className="space-y-4 pb-24">
-      {/* Header Actions */}
       {sortedExpenses.length > 0 && (
         <div className="flex justify-end mb-2">
           <button 
@@ -90,6 +84,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
         sortedExpenses.map(expense => {
           const payer = getPayer(expense.payerId);
           const animalColor = ANIMAL_PATHS[payer?.animal || 'bird'].color;
+          const hasImages = expense.receiptImages && expense.receiptImages.length > 0;
 
           return (
             <div 
@@ -97,19 +92,18 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
               onClick={() => onEdit(expense)}
               className="group bg-white/90 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-stone-100 flex items-center gap-4 transition-all hover:shadow-md cursor-pointer"
             >
-              {/* Category Icon */}
               <div className="relative flex-shrink-0">
                  <div className="w-12 h-12 rounded-xl bg-stone-50 flex items-center justify-center text-stone-600">
                    {getCategoryIcon(expense.category)}
                  </div>
-                 {expense.receiptImage && (
-                   <div className="absolute -bottom-1 -right-1 bg-stone-800 text-white rounded-full p-0.5 border-2 border-white">
-                     <LucideIcons.Image size={10} />
+                 {hasImages && (
+                   <div className="absolute -bottom-1 -right-1 bg-stone-800 text-white rounded-full px-1 border-2 border-white flex items-center gap-0.5">
+                     <LucideIcons.Image size={8} />
+                     <span className="text-[7px] font-bold">{expense.receiptImages?.length}</span>
                    </div>
                  )}
               </div>
 
-              {/* Info - Flex Grow, no right padding needed now */}
               <div className="flex-1 min-w-0 pr-2">
                 <div className="flex justify-between items-baseline mb-1">
                   <h3 className="font-medium text-stone-800 truncate">{expense.description}</h3>
@@ -129,7 +123,6 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
                 </div>
               </div>
 
-              {/* Delete Action - Flex Item */}
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
@@ -145,7 +138,6 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
         })
       )}
 
-      {/* Delete Confirmation Modal */}
       <Modal
           isOpen={!!deleteId}
           onClose={() => setDeleteId(null)}

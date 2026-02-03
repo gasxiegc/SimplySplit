@@ -64,7 +64,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Initialization & Real-time Sync
   useEffect(() => {
     const init = async () => {
       const savedTheme = DataService.getTheme();
@@ -89,8 +88,6 @@ const App: React.FC = () => {
 
       try {
         if (email) {
-            // Pre-fill profile cache from Supabase
-            // We do this by calling login silently or just ensuring dataService has loaded
             const data = await DataService.getProjects();
             setProjects(data);
             setView('projects');
@@ -111,12 +108,9 @@ const App: React.FC = () => {
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // --- SUPABASE REALTIME SUBSCRIPTION ---
-    // Listen for changes on the 'projects' table
     const subscription = supabase
       .channel('public:projects')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, (payload) => {
-        // When DB changes, refresh local data
         refreshData();
       })
       .subscribe();
@@ -126,8 +120,6 @@ const App: React.FC = () => {
       supabase.removeChannel(subscription);
     };
   }, [pendingInviteCode]);
-
-  // ... (Rest of the component remains exactly the same, no changes needed below)
 
   const handleInstallPWA = async () => {
     if (!deferredPrompt) {
@@ -184,7 +176,6 @@ const App: React.FC = () => {
   const handleCreateProject = async (name: string, currency: string, startDate?: number, endDate?: number) => {
     setLoading(true);
     const newProject = await DataService.createProject(name, currency, startDate, endDate);
-    // Refresh triggered by Realtime or explicit call
     const updatedList = await DataService.getProjects(); 
     setProjects(updatedList);
     setCurrentProject(newProject);
@@ -193,11 +184,8 @@ const App: React.FC = () => {
   };
 
   const handleUpdateProject = async (updated: Project) => {
-    // Optimistic Update
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (currentProject?.id === updated.id) setCurrentProject(updated);
-    
-    // Sync to DB
     await DataService.updateProject(updated);
   };
 
@@ -252,14 +240,14 @@ const App: React.FC = () => {
     setIsEditProjectModalOpen(false);
   };
 
-  const handleSaveExpense = async (amount: number, description: string, payerId: string, splits: any[], category: string, date: number, receiptImage?: string, id?: string, customCategory?: string) => {
+  const handleSaveExpense = async (amount: number, description: string, payerId: string, splits: any[], category: string, date: number, receiptImages?: string[], id?: string, customCategory?: string) => {
     if (!currentProject) return;
 
     let updatedExpenses = [...currentProject.expenses];
 
     if (id) {
       updatedExpenses = updatedExpenses.map(e => e.id === id ? {
-        ...e, amount, description, payerId, splits, category, date, receiptImage, splitMode: e.splitMode, customCategory
+        ...e, amount, description, payerId, splits, category, date, receiptImages, splitMode: e.splitMode, customCategory
       } : e);
     } else {
       const newExpense: Expense = {
@@ -272,7 +260,7 @@ const App: React.FC = () => {
         customCategory,
         splitMode: 'custom', 
         splits,
-        receiptImage
+        receiptImages
       };
       updatedExpenses.push(newExpense);
     }
@@ -297,7 +285,6 @@ const App: React.FC = () => {
 
   const ShareOptions = ({ project }: { project: Project }) => {
     const [copied, setCopied] = useState(false);
-    // Dynamic origin
     const shareUrl = `${window.location.origin}/join/${project.inviteCode}`;
 
     const copyLink = () => {
@@ -373,8 +360,6 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen ${themeConfig.bg} ${themeConfig.text} font-sans selection:bg-stone-200 transition-colors duration-500`}>
-      
-      {/* Header */}
       <header className={`sticky top-0 z-10 ${themeConfig.bg}/90 backdrop-blur-md border-b border-stone-100 px-4 py-4 flex items-center justify-between`}>
         <div className="flex items-center gap-3">
           <button onClick={() => setView('projects')} className="p-2 -ml-2 rounded-full hover:bg-black/5">
@@ -405,7 +390,6 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="px-4 py-6 max-w-3xl mx-auto min-h-[80vh]">
         {activeTab === 'expenses' && (
           <ExpenseList 
@@ -422,7 +406,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Add Button (Floating) */}
       <button
         onClick={() => { setEditingExpense(null); setIsAddModalOpen(true); }}
         className={`fixed right-6 bottom-24 z-30 w-14 h-14 ${themeConfig.primary} text-white rounded-full shadow-xl shadow-stone-300 flex items-center justify-center hover:scale-110 transition-transform active:scale-90`}
@@ -431,7 +414,6 @@ const App: React.FC = () => {
         <Plus size={28} />
       </button>
 
-      {/* Bottom Nav */}
       <nav className={`fixed bottom-0 left-0 right-0 ${themeConfig.secondary} border-t border-stone-100 px-6 py-3 flex justify-around items-center z-20 pb-safe`}>
         <button 
           onClick={() => setActiveTab('expenses')}
@@ -458,7 +440,6 @@ const App: React.FC = () => {
         </button>
       </nav>
 
-      {/* Add/Edit Expense Modal */}
       <Modal 
         isOpen={isAddModalOpen} 
         onClose={() => { setIsAddModalOpen(false); setEditingExpense(null); }}
@@ -473,7 +454,6 @@ const App: React.FC = () => {
         />
       </Modal>
 
-      {/* Edit Project Details Modal */}
       <Modal 
         isOpen={isEditProjectModalOpen} 
         onClose={() => setIsEditProjectModalOpen(false)} 
@@ -565,7 +545,6 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Share Modal (In Dashboard) */}
       <Modal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="分享計畫">
           {currentProject && <ShareOptions project={currentProject} />}
       </Modal>

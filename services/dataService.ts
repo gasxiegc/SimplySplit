@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 const CURRENT_USER_EMAIL_KEY = 'simplesplit_current_user_email';
 const USER_PREF_KEY = 'simplesplit_user_pref';
 
-// Helper to get local session email (Supabase Auth is better, but keeping your logic for now)
+// Helper to get local session email
 const getSessionEmail = () => localStorage.getItem(CURRENT_USER_EMAIL_KEY);
 
 export const DataService = {
@@ -22,7 +22,7 @@ export const DataService = {
       .eq('email', cleanEmail)
       .single();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 is "Row not found"
+    if (error && error.code !== 'PGRST116') {
       console.error("Login error:", error);
     }
 
@@ -30,7 +30,7 @@ export const DataService = {
 
     if (existingUser) {
       user = {
-        id: existingUser.email, // Use email as ID for simplicity in this migration
+        id: existingUser.email,
         name: existingUser.name,
         email: existingUser.email,
         animal: existingUser.animal as any,
@@ -58,7 +58,7 @@ export const DataService = {
     // Set Local Session
     localStorage.setItem(CURRENT_USER_EMAIL_KEY, user.email);
     
-    // Update local cache for getUserProfile synchronous calls
+    // Update local cache
     localStorage.setItem('simplesplit_user_cache_' + user.email, JSON.stringify(user));
 
     return user;
@@ -76,20 +76,18 @@ export const DataService = {
     const email = localStorage.getItem(CURRENT_USER_EMAIL_KEY);
     if (!email) throw new Error("Not logged in");
 
-    // Try to get from local cache first (for sync rendering)
     const cached = localStorage.getItem('simplesplit_user_cache_' + email);
     if (cached) return JSON.parse(cached);
 
-    // Fallback default
     return { id: email, name: 'Loading...', email: email, animal: 'bird' };
   },
 
   updateUserProfile: async (updatedUser: User): Promise<void> => {
-    // Update local cache
+    // 1. Update local cache
     localStorage.setItem('simplesplit_user_cache_' + updatedUser.email, JSON.stringify(updatedUser));
 
-    // Update Supabase
-    const { error } = await supabase
+    // 2. Update 'users' table in Supabase
+    const { error: userUpdateError } = await supabase
       .from('users')
       .update({
         name: updatedUser.name,
@@ -98,7 +96,49 @@ export const DataService = {
       })
       .eq('email', updatedUser.email);
 
-    if (error) console.error("Update profile error:", error);
+    if (userUpdateError) {
+      console.error("Update profile error:", userUpdateError);
+      return;
+    }
+
+    // 3. Sync profile to all projects where user is a member
+    // This solves the issue where avatars don't sync after joining a project
+    const { data: userProjects, error: fetchError } = await supabase
+      .from('projects')
+      .select('json_content')
+      .contains('member_emails', [updatedUser.email]);
+
+    if (fetchError) {
+      console.error("Fetch projects for sync error:", fetchError);
+      return;
+    }
+
+    if (userProjects && userProjects.length > 0) {
+      const syncPromises = userProjects.map(async (row) => {
+        const project = row.json_content as Project;
+        
+        // Check if data actually needs update in this project
+        let needsUpdate = false;
+        const updatedMembers = project.members.map(m => {
+          if (m.email === updatedUser.email) {
+            // Check if any fields changed to avoid unnecessary writes
+            if (m.name !== updatedUser.name || m.animal !== updatedUser.animal || m.customAvatar !== updatedUser.customAvatar) {
+              needsUpdate = true;
+              return { ...m, ...updatedUser };
+            }
+          }
+          return m;
+        });
+
+        if (needsUpdate) {
+          project.members = updatedMembers;
+          return DataService.updateProject(project);
+        }
+        return Promise.resolve();
+      });
+
+      await Promise.all(syncPromises);
+    }
   },
 
   // --- PROJECT MANAGEMENT (Supabase) ---
@@ -107,7 +147,6 @@ export const DataService = {
     const email = getSessionEmail();
     if (!email) return [];
 
-    // Select projects where member_emails array contains the user's email
     const { data, error } = await supabase
       .from('projects')
       .select('json_content')
@@ -122,8 +161,6 @@ export const DataService = {
   },
 
   updateProject: async (updatedProject: Project): Promise<void> => {
-    // We store the entire Project object in the 'json_content' column
-    // This preserves your exact data structure without complex relational mapping
     const { error } = await supabase
       .from('projects')
       .upsert({
@@ -154,7 +191,6 @@ export const DataService = {
     if (!email) throw new Error("Must be logged in to join");
     const me = DataService.getUserProfile();
 
-    // Find project by invite code
     const { data, error } = await supabase
       .from('projects')
       .select('json_content')
@@ -168,13 +204,11 @@ export const DataService = {
 
     const project = data.json_content as Project;
 
-    // Check if already a member
     if (!project.memberEmails.includes(email)) {
       project.memberEmails.push(email);
       if (!project.members.find(m => m.email === email)) {
         project.members.push(me);
       }
-      // Save back to DB
       await DataService.updateProject(project);
     }
 
@@ -234,13 +268,10 @@ export const DataService = {
       ]
     };
     
-    // Demo projects usually don't need to be saved to DB unless you want to,
-    // but consistent behavior is better.
     await DataService.updateProject(demo);
     return demo;
   },
 
-  // User Preferences (Keep in LocalStorage)
   getTheme: (): string => {
     return localStorage.getItem(USER_PREF_KEY + '_theme') || 'default';
   },

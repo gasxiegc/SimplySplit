@@ -27,7 +27,7 @@ export interface Expense {
   customCategory?: string; // For 'other' type
   splitMode: SplitMode;
   splits: Split[];
-  receiptImage?: string; // base64
+  receiptImages?: string[]; // CHANGED: array of base64 strings
 }
 
 export interface Project {

@@ -1,15 +1,14 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, SplitMode, Expense } from '../types';
 import { CATEGORIES } from '../constants';
 import Avatar from './ui/Avatar';
 import * as LucideIcons from 'lucide-react';
-import { Camera, Image as ImageIcon, X } from 'lucide-react';
+import { Camera, X, Calendar, Plus } from 'lucide-react';
 import { compressImage } from '../utils/imageUtils';
 
 interface ExpenseModalProps {
   project: Project;
-  onSave: (amount: number, description: string, payerId: string, splits: { userId: string, amount: number }[], category: string, date: number, receiptImage?: string, id?: string, customCategory?: string) => void;
+  onSave: (amount: number, description: string, payerId: string, splits: { userId: string, amount: number }[], category: string, date: number, receiptImages?: string[], id?: string, customCategory?: string) => void;
   onClose: () => void;
   editingExpense?: Expense | null;
 }
@@ -23,14 +22,13 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
   const [splitMode, setSplitMode] = useState<SplitMode>('equal');
   const [customAmounts, setCustomAmounts] = useState<{[key: string]: string}>({});
   const [date, setDate] = useState(Date.now());
-  const [receiptImage, setReceiptImage] = useState<string | undefined>(undefined);
+  const [receiptImages, setReceiptImages] = useState<string[]>([]);
   const [touchedSplits, setTouchedSplits] = useState<Set<string>>(new Set());
   const [isCompressing, setIsCompressing] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Reset touched state when opening modal
     setTouchedSplits(new Set());
 
     if (editingExpense) {
@@ -41,19 +39,17 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
       if (editingExpense.customCategory) setCustomCategory(editingExpense.customCategory);
       setSplitMode(editingExpense.splitMode);
       setDate(editingExpense.date);
-      setReceiptImage(editingExpense.receiptImage);
+      setReceiptImages(editingExpense.receiptImages || []);
 
       if (editingExpense.splitMode === 'custom') {
         const amounts: {[key: string]: string} = {};
-        // Use toFixed(0) to remove decimals for custom amounts as requested
         editingExpense.splits.forEach(s => amounts[s.userId] = s.amount.toFixed(0));
         setCustomAmounts(amounts);
       }
     } else {
-        // Init default custom amounts for new expense
+        setDate(Date.now());
         const equalShare = (parseFloat(amountStr) || 0) / project.members.length;
         const initMap: any = {};
-        // Use toFixed(0) for integer defaults
         project.members.forEach(m => initMap[m.id] = equalShare.toFixed(0));
         setCustomAmounts(initMap);
     }
@@ -61,28 +57,22 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
 
   const amount = parseFloat(amountStr) || 0;
 
-  // Sync custom amounts when switching back to custom or changing total amount if in equal mode
   useEffect(() => {
     if (splitMode === 'equal') {
        const equalShare = amount / project.members.length;
        const newMap: any = {};
        project.members.forEach(m => newMap[m.id] = equalShare.toFixed(0));
        setCustomAmounts(newMap);
-       setTouchedSplits(new Set()); // Reset touched if we go back to equal or amount changes in equal mode
+       setTouchedSplits(new Set());
     }
   }, [amount, splitMode, project.members.length]);
 
   const handleCustomAmountChange = (userId: string, newValueStr: string) => {
-      // 1. Update the value in state for the current user
       const newMap = { ...customAmounts, [userId]: newValueStr };
-
-      // 2. Mark this user as touched
       const newTouched = new Set<string>(touchedSplits);
       newTouched.add(userId);
       setTouchedSplits(newTouched);
 
-      // 3. Calculate remaining amount to distribute
-      // Sum of all TOUCHED fields
       let touchedSum = 0;
       newTouched.forEach(id => {
           touchedSum += parseFloat(newMap[id]) || 0;
@@ -92,10 +82,8 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
       const untouchedUsers = project.members.filter(m => !newTouched.has(m.id));
 
       if (untouchedUsers.length > 0) {
-          // Distribute equally to untouched (Integers)
           const share = Math.floor(remaining / untouchedUsers.length);
           untouchedUsers.forEach((m, index) => {
-              // Add remainder to the last untouched user to ensure sum matches remaining
               if (index === untouchedUsers.length - 1) {
                   const currentSum = share * (untouchedUsers.length - 1);
                   newMap[m.id] = (remaining - currentSum).toFixed(0);
@@ -104,28 +92,18 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
               }
           });
       } else {
-          // No untouched users. Distribute remainder to the LAST person.
-          // Logic: If user edits A, and B, C, D are all touched. The remainder must go somewhere.
-          // Prompt requirement: "Balance automatically distributed to the last one".
-          // BUT: If the current user IS the last person, we shouldn't overwrite their input.
-          
           const lastMember = project.members[project.members.length - 1];
-          
           if (lastMember.id !== userId) {
-             // Calculate sum of everyone except last person
              let currentTotalExcludingLast = 0;
              project.members.forEach(m => {
                  if (m.id !== lastMember.id) {
                      currentTotalExcludingLast += parseFloat(newMap[m.id]) || 0;
                  }
              });
-             
              const diff = amount - currentTotalExcludingLast;
-             // Ensure we format as integer string
              newMap[lastMember.id] = diff.toFixed(0);
           }
       }
-
       setCustomAmounts(newMap);
   };
 
@@ -143,42 +121,36 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
 
   const handleSave = () => {
     if (!amount || !description) return;
-    
-    // Validation for custom split
-    if (splitMode === 'custom') {
-      const totalCustom = (Object.values(customAmounts) as string[]).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-      // Tolerance of 1 for rounding issues or minor input lag
-      if (Math.abs(totalCustom - amount) > 1) { 
-        if(!window.confirm(`分帳總額 (${totalCustom.toFixed(0)}) 與 總金額 (${amount}) 不符。確定要儲存嗎？(差額將被忽略)`)) {
-            return;
-        }
-      }
-    }
-
-    onSave(amount, description, payerId, getSplits(), category, date, receiptImage, editingExpense?.id, customCategory);
+    onSave(amount, description, payerId, getSplits(), category, date, receiptImages, editingExpense?.id, customCategory);
     onClose();
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+    const files = e.target.files;
+    if (files && files.length > 0) {
       setIsCompressing(true);
       try {
-        // Compress to max 800px width, 0.5 quality to save local storage space
-        const compressedBase64 = await compressImage(file, 800, 0.5);
-        setReceiptImage(compressedBase64);
+        const uploadPromises = Array.from(files).map((file: File) => compressImage(file, 800, 0.5));
+        const newImages = await Promise.all(uploadPromises);
+        setReceiptImages(prev => [...prev, ...newImages]);
       } catch (err) {
         console.error("Compression failed", err);
-        alert("圖片處理失敗，請試試其他圖片");
+        alert("部分圖片處理失敗");
       } finally {
         setIsCompressing(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     }
   };
 
+  const removeImage = (index: number) => {
+    setReceiptImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const dateString = new Date(date).toISOString().split('T')[0];
+
   return (
     <div className="flex flex-col h-full gap-6">
-      {/* Amount Display */}
       <div className="flex flex-col items-center justify-center py-4">
         <label className="text-stone-500 text-sm mb-1 font-medium">總金額</label>
         <div className="relative">
@@ -194,7 +166,6 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
         </div>
       </div>
 
-      {/* Description & Category */}
       <div className="space-y-4">
         <div className="flex gap-2">
           <div className="flex-1 bg-stone-100 rounded-2xl px-4 py-3 flex items-center gap-2">
@@ -210,7 +181,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
           <button 
             onClick={() => !isCompressing && fileInputRef.current?.click()}
             disabled={isCompressing}
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${receiptImage ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${receiptImages.length > 0 ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}
           >
             {isCompressing ? <div className="w-4 h-4 border-2 border-stone-400 border-t-transparent rounded-full animate-spin"></div> : <Camera size={20} />}
           </button>
@@ -219,24 +190,48 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
             ref={fileInputRef} 
             className="hidden" 
             accept="image/*" 
+            multiple
             onChange={handleImageUpload}
           />
         </div>
 
-        {/* Image Preview */}
-        {receiptImage && (
-          <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-stone-100 border border-stone-200">
-            <img src={receiptImage} alt="Receipt" className="w-full h-full object-cover" />
+        <div className="bg-stone-100 rounded-2xl px-4 py-3 flex items-center gap-2">
+          <Calendar size={18} className="text-stone-400" />
+          <input 
+            type="date"
+            value={dateString}
+            onChange={(e) => {
+                const selectedDate = new Date(e.target.value);
+                selectedDate.setHours(12, 0, 0, 0);
+                setDate(selectedDate.getTime());
+            }}
+            className="bg-transparent w-full focus:outline-none text-stone-700 font-sans"
+          />
+        </div>
+
+        {receiptImages.length > 0 && (
+          <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+            {receiptImages.map((imgData, idx) => (
+              <div key={idx} className="relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-sm group">
+                <img src={imgData} alt={`Receipt ${idx}`} className="w-full h-full object-cover" />
+                <button 
+                  onClick={() => removeImage(idx)}
+                  className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white hover:bg-red-500 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
             <button 
-              onClick={() => setReceiptImage(undefined)}
-              className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-shrink-0 w-24 h-24 rounded-xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center text-stone-400 hover:border-stone-400 hover:text-stone-500 transition-all"
             >
-              <X size={16} />
+              <Plus size={20} />
+              <span className="text-[10px] font-bold mt-1">追加</span>
             </button>
           </div>
         )}
 
-        {/* Categories Grid (2 Rows) */}
         <div className="grid grid-cols-4 gap-2">
           {CATEGORIES.map(cat => {
             const isSelected = category === cat.id;
@@ -266,7 +261,6 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
         )}
       </div>
 
-      {/* Payer Selection */}
       <div>
         <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 block">誰付款</label>
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
@@ -285,7 +279,6 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
         </div>
       </div>
 
-      {/* Split Mode */}
       <div className="flex-1">
         <div className="flex justify-between items-end mb-3">
           <label className="text-xs font-bold text-stone-400 uppercase tracking-wider">分帳對象</label>
@@ -335,7 +328,6 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onSave, onClose, e
         </div>
       </div>
 
-      {/* Save Button */}
       <button
         onClick={handleSave}
         disabled={!amount || !description || isCompressing}
