@@ -276,14 +276,14 @@ const App: React.FC = () => {
     setIsEditProjectModalOpen(false);
   };
 
-  const handleSaveExpense = async (amount: number, description: string, payerId: string, splits: any[], category: string, date: number, receiptImages?: string[], id?: string, customCategory?: string) => {
+  const handleSaveExpense = async (amount: number, description: string, payerId: string, splits: any[], category: string, date: number, receiptImages?: string[], id?: string, customCategory?: string, notes?: string) => {
     if (!currentProject) return;
 
     let updatedExpenses = [...currentProject.expenses];
 
     if (id) {
       updatedExpenses = updatedExpenses.map(e => e.id === id ? {
-        ...e, amount, description, payerId, splits, category, date, receiptImages, splitMode: e.splitMode, customCategory
+        ...e, amount, description, payerId, splits, category, date, receiptImages, splitMode: e.splitMode, customCategory, notes
       } : e);
     } else {
       const newExpense: Expense = {
@@ -296,7 +296,8 @@ const App: React.FC = () => {
         customCategory,
         splitMode: 'custom', 
         splits,
-        receiptImages
+        receiptImages,
+        notes
       };
       updatedExpenses.push(newExpense);
     }

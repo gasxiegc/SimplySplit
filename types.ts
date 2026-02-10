@@ -28,6 +28,7 @@ export interface Expense {
   splitMode: SplitMode;
   splits: Split[];
   receiptImages?: string[]; // CHANGED: array of base64 strings
+  notes?: string; // 新增：備註與明細
 }
 
 export interface Project {
