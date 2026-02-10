@@ -98,10 +98,10 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
                 
                 任務要求：
                 1. 總金額 (amount): 必須是收據上的「最終應付總額」。請忽略小計(Subtotal)、稅額(Tax)或折扣(Discount)。
-                2. 項目名稱 (description): 請提取商戶名稱。若為外文，請務必翻譯成「繁體中文 (zh-TW)」。
+                2. 項目名稱 (description): 請提取商戶名稱。若原文為外文，請務必翻譯成「繁體中文 (zh-TW)」。
                 3. 日期 (date): 格式為 YYYY-MM-DD。
                 4. 分類 (category): 選擇最合適的一個 (food, transport, housing, utilities, tickets, entertainment, shopping, other)。
-                5. 明細 (items): 請列出所有具體的消費品項、數量與價格。格式為「- 項目 x數量 ($單價)」。
+                5. 明細 (items): 請提取清單上的具體項目與金額。格式為「- 項目 x數量 ($單價)」。
                 
                 請嚴格依照 JSON 格式回傳。`,
               },
@@ -340,7 +340,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         </div>
       </div>
 
-      {/* 分帳對象 - 優化為雙欄排列 (grid-cols-2) */}
+      {/* 分帳對象 - 雙欄排列 (grid-cols-2) */}
       <div className="flex-1">
         <div className="flex justify-between items-center mb-2">
           <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">分帳對象</label>
@@ -387,7 +387,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         <textarea 
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="點擊 AI 辨識可自動填寫收據明細..."
+          placeholder="點擊 AI 辨識可自動填寫明細..."
           className="bg-transparent w-full focus:outline-none text-stone-700 text-[11px] min-h-[50px] resize-none leading-relaxed font-medium"
         />
       </div>
@@ -413,7 +413,6 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         </button>
       </div>
 
-      {/* 圖片大圖檢視 */}
       {viewerIndex !== null && (
         <div className="fixed inset-0 z-[60] bg-stone-900/95 flex flex-col items-center justify-center p-4" onClick={() => setViewerIndex(null)}>
           <button className="absolute top-6 right-6 z-[70] p-3 bg-white/10 rounded-full text-white active:scale-90"><X size={24} /></button>

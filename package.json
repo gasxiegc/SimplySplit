@@ -1,3 +1,4 @@
+
 {
   "name": "simple-split-v2",
   "private": true,
@@ -13,7 +14,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.12.0",
-    "@supabase/supabase-js": "^2.39.7"
+    "@supabase/supabase-js": "^2.39.7",
+    "@google/genai": "^1.40.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.56",
