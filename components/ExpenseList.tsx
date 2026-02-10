@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Project, Expense } from '../types';
 import { formatCurrency } from '../utils/settlement';
@@ -21,9 +20,9 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
 
   const getCategoryIcon = (catId: string) => {
     const cat = CATEGORIES.find(c => c.id === catId);
-    if (!cat) return <LucideIcons.MoreHorizontal size={18} />;
+    if (!cat) return <LucideIcons.MoreHorizontal size={20} />;
     const Icon = (LucideIcons as any)[cat.icon.charAt(0).toUpperCase() + cat.icon.slice(1).replace(/-([a-z])/g, (g) => g[1].toUpperCase())] || LucideIcons.Circle;
-    return <Icon size={18} />;
+    return <Icon size={20} />;
   };
 
   const downloadCSV = () => {
@@ -66,19 +65,19 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
         <div className="flex justify-end mb-2">
           <button 
             onClick={downloadCSV}
-            className="flex items-center gap-1 text-xs font-bold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-200 transition-colors"
+            className="flex items-center gap-1.5 text-sm font-bold text-stone-400 bg-stone-100 px-4 py-2 rounded-full hover:bg-stone-200 transition-colors"
           >
-            <LucideIcons.Download size={12} />
+            <LucideIcons.Download size={14} />
             匯出 CSV
           </button>
         </div>
       )}
 
       {sortedExpenses.length === 0 ? (
-        <div className="text-center py-20 text-stone-400">
-          <LucideIcons.Feather size={48} className="mx-auto mb-4 opacity-50" />
-          <p className="font-serif text-lg">目前沒有帳務資料</p>
-          <p className="text-sm">點擊 + 按鈕開始記帳</p>
+        <div className="text-center py-24 text-stone-400">
+          <LucideIcons.Feather size={64} className="mx-auto mb-6 opacity-30" />
+          <p className="font-serif text-2xl font-bold mb-2">目前沒有帳務資料</p>
+          <p className="text-base">點擊右下角 + 按鈕開始記帳</p>
         </div>
       ) : (
         sortedExpenses.map(expense => {
@@ -90,31 +89,31 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
             <div 
               key={expense.id} 
               onClick={() => onEdit(expense)}
-              className="group bg-white/90 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-stone-100 flex items-center gap-4 transition-all hover:shadow-md cursor-pointer"
+              className="group bg-white/95 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-stone-100 flex items-center gap-4 transition-all hover:shadow-md active:scale-[0.98] cursor-pointer"
             >
               <div className="relative flex-shrink-0">
-                 <div className="w-12 h-12 rounded-xl bg-stone-50 flex items-center justify-center text-stone-600">
+                 <div className="w-14 h-14 rounded-2xl bg-stone-50 flex items-center justify-center text-stone-600 border border-stone-100">
                    {getCategoryIcon(expense.category)}
                  </div>
                  {hasImages && (
-                   <div className="absolute -bottom-1 -right-1 bg-stone-800 text-white rounded-full px-1 border-2 border-white flex items-center gap-0.5">
-                     <LucideIcons.Image size={8} />
-                     <span className="text-[7px] font-bold">{expense.receiptImages?.length}</span>
+                   <div className="absolute -bottom-1 -right-1 bg-stone-800 text-white rounded-full px-1.5 py-0.5 border-2 border-white flex items-center gap-0.5 shadow-sm">
+                     <LucideIcons.Image size={10} />
+                     <span className="text-[9px] font-bold">{expense.receiptImages?.length}</span>
                    </div>
                  )}
               </div>
 
               <div className="flex-1 min-w-0 pr-2">
-                <div className="flex justify-between items-baseline mb-1">
-                  <h3 className="font-medium text-stone-800 truncate">{expense.description}</h3>
-                  <span className="font-serif font-bold text-stone-900 flex-shrink-0 pl-2">
+                <div className="flex justify-between items-baseline mb-1.5">
+                  <h3 className="font-bold text-stone-800 text-lg truncate leading-tight">{expense.description}</h3>
+                  <span className="font-serif font-bold text-stone-900 flex-shrink-0 pl-3 text-lg">
                     {formatCurrency(expense.amount, project.currency)}
                   </span>
                 </div>
-                <div className="flex justify-between items-center text-xs text-stone-500">
-                  <div className="flex items-center gap-1">
+                <div className="flex justify-between items-center text-sm text-stone-500 font-medium">
+                  <div className="flex items-center gap-1.5">
                     <span 
-                      className="w-2 h-2 rounded-full" 
+                      className="w-2.5 h-2.5 rounded-full" 
                       style={{ backgroundColor: animalColor }}
                     />
                     <span>{payer?.name} 付款</span>
@@ -128,10 +127,10 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
                   e.stopPropagation();
                   setDeleteId(expense.id);
                 }}
-                className="p-2 text-stone-300 hover:text-red-400 hover:bg-stone-50 rounded-full transition-all flex-shrink-0"
+                className="p-2.5 text-stone-300 hover:text-red-400 hover:bg-stone-50 rounded-full transition-all flex-shrink-0 active:scale-90"
                 title="刪除"
               >
-                <LucideIcons.Trash2 size={18} />
+                <LucideIcons.Trash2 size={20} />
               </button>
             </div>
           );
@@ -143,14 +142,14 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
           onClose={() => setDeleteId(null)}
           title="確認刪除"
       >
-          <div className="space-y-4 pt-4">
-              <p className="text-stone-600">
+          <div className="space-y-6 pt-4">
+              <p className="text-stone-600 text-base leading-relaxed">
                   確定要刪除這筆帳務嗎？此操作無法復原。
               </p>
-              <div className="flex gap-3">
+              <div className="flex gap-4">
                   <button 
                       onClick={() => setDeleteId(null)}
-                      className="flex-1 py-3 bg-stone-100 text-stone-600 rounded-xl font-bold"
+                      className="flex-1 py-4 bg-stone-100 text-stone-600 rounded-2xl font-bold text-base"
                   >
                       取消
                   </button>
@@ -161,7 +160,7 @@ const ExpenseList: React.FC<ExpenseListProps> = ({ project, onDelete, onEdit }) 
                               setDeleteId(null);
                           }
                       }}
-                      className="flex-1 py-3 bg-red-50 text-red-500 rounded-xl font-bold hover:bg-red-100"
+                      className="flex-1 py-4 bg-red-50 text-red-500 rounded-2xl font-bold text-base hover:bg-red-100 active:scale-95 transition-transform"
                   >
                       確認刪除
                   </button>

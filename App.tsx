@@ -399,14 +399,14 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen ${themeConfig.bg} ${themeConfig.text} font-sans selection:bg-stone-200 transition-colors duration-500`}>
-      <header className={`sticky top-0 z-10 ${themeConfig.bg}/90 backdrop-blur-md border-b border-stone-100 px-4 py-4 flex items-center justify-between`}>
+      <header className={`sticky top-0 z-10 ${themeConfig.bg}/90 backdrop-blur-md border-b border-stone-100 px-4 py-5 flex items-center justify-between`}>
         <div className="flex items-center gap-3">
-          <button onClick={() => setView('projects')} className="p-2 -ml-2 rounded-full hover:bg-black/5">
-            <ArrowLeft size={24} />
+          <button onClick={() => setView('projects')} className="p-2 -ml-2 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
+            <ArrowLeft size={28} />
           </button>
           <div className="overflow-hidden">
-            <h1 className="font-serif font-bold text-xl leading-tight truncate max-w-[160px]">{currentProject.name}</h1>
-            <p className="text-[10px] opacity-60 font-medium tracking-wide">
+            <h1 className="font-serif font-bold text-2xl leading-tight truncate max-w-[160px]">{currentProject.name}</h1>
+            <p className="text-xs opacity-60 font-medium tracking-wide">
               {currentProject.members.length} 成員 • {currentProject.currency}
             </p>
           </div>
@@ -414,24 +414,24 @@ const App: React.FC = () => {
         <div className="flex gap-1">
            <button 
              onClick={() => setIsMembersModalOpen(true)}
-             className="p-2 rounded-full hover:bg-black/5 transition-colors text-stone-600"
+             className="p-2.5 rounded-full hover:bg-black/5 transition-colors text-stone-600 active:scale-90"
              title="管理成員"
            >
-             <Users size={20} />
+             <Users size={24} />
            </button>
            <button 
              onClick={openEditProjectModal}
-             className="p-2 rounded-full hover:bg-black/5 transition-colors text-stone-600"
+             className="p-2.5 rounded-full hover:bg-black/5 transition-colors text-stone-600 active:scale-90"
              title="編輯計畫內容"
            >
-             <Edit2 size={20} />
+             <Edit2 size={24} />
            </button>
            <button 
              onClick={() => setIsShareModalOpen(true)}
-             className="p-2 rounded-full hover:bg-black/5 transition-colors text-stone-600"
+             className="p-2.5 rounded-full hover:bg-black/5 transition-colors text-stone-600 active:scale-90"
              title="邀請成員"
            >
-             <Share2 size={20} />
+             <Share2 size={24} />
            </button>
         </div>
       </header>
@@ -452,37 +452,39 @@ const App: React.FC = () => {
         )}
       </main>
 
+      {/* 放大新增按鈕 */}
       <button
         onClick={() => { setEditingExpense(null); setIsAddModalOpen(true); }}
-        className={`fixed right-6 bottom-24 z-30 w-14 h-14 ${themeConfig.primary} text-white rounded-full shadow-xl shadow-stone-300 flex items-center justify-center hover:scale-110 transition-transform active:scale-90`}
+        className={`fixed right-6 bottom-28 z-30 w-16 h-16 ${themeConfig.primary} text-white rounded-full shadow-2xl shadow-stone-400 flex items-center justify-center hover:scale-110 transition-transform active:scale-90`}
         aria-label="Add Expense"
       >
-        <Plus size={28} />
+        <Plus size={32} />
       </button>
 
-      <nav className={`fixed bottom-0 left-0 right-0 ${themeConfig.secondary} border-t border-stone-100 px-6 py-3 flex justify-around items-center z-20 pb-safe`}>
+      {/* 底部導覽優化：放大圖示與文字 */}
+      <nav className={`fixed bottom-0 left-0 right-0 ${themeConfig.secondary} border-t border-stone-100 px-6 py-4 flex justify-around items-center z-20 pb-safe`}>
         <button 
           onClick={() => setActiveTab('expenses')}
-          className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'expenses' ? themeConfig.text : 'text-stone-400'}`}
+          className={`flex flex-col items-center gap-1.5 transition-colors ${activeTab === 'expenses' ? themeConfig.text : 'text-stone-400'}`}
         >
-          <List size={24} strokeWidth={activeTab === 'expenses' ? 2.5 : 2} />
-          <span className="text-[10px] font-bold">帳務</span>
+          <List size={28} strokeWidth={activeTab === 'expenses' ? 2.5 : 2} />
+          <span className={`text-xs ${activeTab === 'expenses' ? 'font-bold' : 'font-medium'}`}>帳務</span>
         </button>
 
         <button 
           onClick={() => setActiveTab('stats')}
-          className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'stats' ? themeConfig.text : 'text-stone-400'}`}
+          className={`flex flex-col items-center gap-1.5 transition-colors ${activeTab === 'stats' ? themeConfig.text : 'text-stone-400'}`}
         >
-          <PieChart size={24} strokeWidth={activeTab === 'stats' ? 2.5 : 2} />
-          <span className="text-[10px] font-bold">統計</span>
+          <PieChart size={28} strokeWidth={activeTab === 'stats' ? 2.5 : 2} />
+          <span className={`text-xs ${activeTab === 'stats' ? 'font-bold' : 'font-medium'}`}>統計</span>
         </button>
 
         <button 
           onClick={() => setActiveTab('settle')}
-          className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'settle' ? themeConfig.text : 'text-stone-400'}`}
+          className={`flex flex-col items-center gap-1.5 transition-colors ${activeTab === 'settle' ? themeConfig.text : 'text-stone-400'}`}
         >
-          <RefreshCw size={24} strokeWidth={activeTab === 'settle' ? 2.5 : 2} />
-          <span className="text-[10px] font-bold">結算</span>
+          <RefreshCw size={28} strokeWidth={activeTab === 'settle' ? 2.5 : 2} />
+          <span className={`text-xs ${activeTab === 'settle' ? 'font-bold' : 'font-medium'}`}>結算</span>
         </button>
       </nav>
 
@@ -609,7 +611,7 @@ const App: React.FC = () => {
                       <Avatar user={member} size="md" />
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-stone-800">{member.name}</span>
+                          <span className="font-bold text-stone-800 text-base">{member.name}</span>
                           {isMemberOwner && (
                             <span className="flex items-center gap-1 bg-stone-800 text-stone-50 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                               <ShieldCheck size={10} />
@@ -617,17 +619,17 @@ const App: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-stone-400">{member.email}</p>
+                        <p className="text-sm text-stone-400">{member.email}</p>
                       </div>
                     </div>
                     
                     {isOwner && !isMemberOwner && (
                       <button 
                         onClick={() => handleRemoveMember(member.id)}
-                        className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                        className="p-2.5 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all active:scale-90"
                         title="從計畫中移除"
                       >
-                        <UserX size={18} />
+                        <UserX size={22} />
                       </button>
                     )}
                   </div>
@@ -637,9 +639,9 @@ const App: React.FC = () => {
             
             <button 
               onClick={() => { setIsMembersModalOpen(false); setIsShareModalOpen(true); }}
-              className="w-full mt-4 py-3 border-2 border-dashed border-stone-200 text-stone-400 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:border-stone-400 hover:text-stone-500 transition-all"
+              className="w-full mt-4 py-4 border-2 border-dashed border-stone-200 text-stone-400 rounded-2xl font-bold text-base flex items-center justify-center gap-2 hover:border-stone-400 hover:text-stone-500 transition-all"
             >
-              <Plus size={16} />
+              <Plus size={20} />
               邀請更多成員
             </button>
           </div>
