@@ -231,8 +231,8 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
   const dateString = new Date(date).toISOString().split('T')[0];
 
   return (
-    <div className="flex flex-col h-full gap-5">
-      {/* 總金額 - 放大字體 */}
+    <div className="flex flex-col h-full gap-5 pb-4">
+      {/* 總金額 - 顯著字體 */}
       <div className="flex flex-col items-center justify-center py-2">
         <label className="text-stone-500 text-xs mb-2 font-bold uppercase tracking-widest">總金額</label>
         <div className="relative">
@@ -249,7 +249,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
       </div>
 
       <div className="space-y-4">
-        {/* 名稱與 AI 按鈕 */}
+        {/* 名稱與功能按鈕 */}
         <div className="flex gap-2">
           <div className="flex-1 bg-stone-100 rounded-2xl px-4 py-3.5 flex items-center gap-2 border border-stone-200/50">
             <LucideIcons.PenLine size={20} className="text-stone-400" />
@@ -269,6 +269,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
               ${isScanning ? 'bg-nature-yellow text-stone-800 animate-pulse' : 
                 quotaReached ? 'bg-stone-200 text-stone-400' : 'bg-stone-800 text-nature-yellow hover:scale-105 active:scale-95'}
             `}
+            title="AI 掃描"
           >
             {isScanning ? <Loader2 className="animate-spin" size={24} /> : <Sparkles size={24} />}
           </button>
@@ -276,14 +277,15 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
           <button 
             onClick={() => !isCompressing && fileInputRef.current?.click()}
             disabled={isCompressing}
-            className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-md ${receiptImages.length > 0 ? 'bg-stone-200 text-stone-800' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}
+            className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-md ${receiptImages.length > 0 ? 'bg-stone-200 text-stone-800' : 'bg-stone-100 text-stone-400 hover:bg-stone-200 active:scale-95'}`}
+            title="上傳圖片"
           >
             {isCompressing ? <Loader2 className="animate-spin" size={20} /> : <Camera size={24} />}
           </button>
           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleImageUpload} />
         </div>
 
-        {/* 日期選擇器 */}
+        {/* 日期選擇 */}
         <div className="bg-stone-100 rounded-2xl px-4 py-3.5 flex items-center gap-2 border border-stone-200/50">
           <Calendar size={20} className="text-stone-400" />
           <input 
@@ -294,7 +296,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
           />
         </div>
 
-        {/* 收據圖片預覽 */}
+        {/* 圖片預覽 */}
         {receiptImages.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {receiptImages.map((imgData, idx) => (
@@ -309,7 +311,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
           </div>
         )}
 
-        {/* 分類按鈕 - 放大間距 */}
+        {/* 分類選項 */}
         <div className="grid grid-cols-4 gap-2">
           {CATEGORIES.map(cat => {
             const isSelected = category === cat.id;
@@ -319,7 +321,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
                 key={cat.id}
                 onClick={() => setCategory(cat.id)}
                 className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl transition-all border
-                  ${isSelected ? 'bg-stone-800 text-white border-stone-800 shadow-lg scale-[1.02]' : 'bg-stone-50 text-stone-500 border-stone-100'}
+                  ${isSelected ? 'bg-stone-800 text-white border-stone-800 shadow-lg scale-[1.02]' : 'bg-stone-50 text-stone-500 border-stone-100 active:scale-95'}
                 `}
               >
                 <Icon size={18} />
@@ -330,7 +332,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         </div>
       </div>
 
-      {/* 付款人選擇 - 放大頭像與文字 */}
+      {/* 付款人 */}
       <div>
         <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-3 block">誰付款</label>
         <div className="flex gap-4 overflow-x-auto pb-1 no-scrollbar">
@@ -343,13 +345,13 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         </div>
       </div>
 
-      {/* 分帳對象 - 優化為雙欄排列，增加高度與觸控感 */}
+      {/* 分帳內容 - 雙欄 */}
       <div className="flex-1">
         <div className="flex justify-between items-center mb-3">
           <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">分帳對象</label>
           <div className="flex bg-stone-100 rounded-xl p-1 border border-stone-200/50">
-            <button onClick={() => setSplitMode('equal')} className={`px-4 py-1 rounded-lg text-xs font-bold transition-all ${splitMode === 'equal' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400'}`}>平分</button>
-            <button onClick={() => setSplitMode('custom')} className={`px-4 py-1 rounded-lg text-xs font-bold transition-all ${splitMode === 'custom' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400'}`}>自訂</button>
+            <button onClick={() => setSplitMode('equal')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${splitMode === 'equal' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400'}`}>平分</button>
+            <button onClick={() => setSplitMode('custom')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${splitMode === 'custom' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400'}`}>自訂</button>
           </div>
         </div>
 
@@ -358,7 +360,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
             const memberAmount = parseFloat(customAmounts[member.id]) || 0;
             const isOverflow = splitMode === 'custom' && memberAmount > amount;
             return (
-              <div key={member.id} className="flex items-center justify-between py-2.5 px-3 rounded-2xl bg-stone-50 border border-stone-200/50 transition-colors focus-within:bg-white focus-within:ring-1 focus-within:ring-stone-200">
+              <div key={member.id} className="flex items-center justify-between py-3 px-3 rounded-2xl bg-stone-50 border border-stone-200/50 transition-colors focus-within:bg-white focus-within:ring-2 focus-within:ring-stone-200">
                 <div className="flex items-center gap-2 min-w-0">
                   <Avatar user={member} size="sm" className="w-6 h-6 flex-shrink-0" />
                   <span className="text-sm text-stone-700 font-bold truncate">{member.name}</span>
@@ -384,21 +386,22 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         </div>
       </div>
 
-      {/* 備註欄位 - 增加高度與字體 */}
-      <div className="bg-stone-100 rounded-2xl px-4 py-3 flex items-start gap-2 border border-stone-200/50">
-        <StickyNote size={18} className="text-stone-400 mt-1" />
+      {/* 備註 */}
+      <div className="bg-stone-100 rounded-2xl px-4 py-3.5 flex items-start gap-2 border border-stone-200/50">
+        <StickyNote size={20} className="text-stone-400 mt-1" />
         <textarea 
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="點擊 AI 辨識可自動填寫收據明細..."
-          className="bg-transparent w-full focus:outline-none text-stone-700 text-sm min-h-[70px] resize-none leading-relaxed font-medium"
+          className="bg-transparent w-full focus:outline-none text-stone-700 text-sm min-h-[80px] resize-none leading-relaxed font-medium"
         />
       </div>
 
-      <div className="space-y-3">
+      {/* 超大底部按鈕 */}
+      <div className="space-y-4 pt-2">
         {splitMode === 'custom' && !isSumValid && amount > 0 && (
-          <div className="flex items-center justify-center gap-2 text-red-500 bg-red-50 py-2 rounded-xl text-xs font-bold animate-pulse">
-            <AlertCircle size={14} />
+          <div className="flex items-center justify-center gap-2 text-red-500 bg-red-50 py-2.5 rounded-xl text-xs font-bold animate-pulse">
+            <AlertCircle size={16} />
             <span>總計不符 ({getSplitsSum().toFixed(0)} / {amount.toFixed(0)})</span>
           </div>
         )}
@@ -406,20 +409,27 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         <button
           onClick={handleSave}
           disabled={!amount || !description || isCompressing || !isSumValid || isScanning}
-          className={`w-full py-4.5 rounded-2xl font-bold text-lg transition-all shadow-lg active:scale-[0.98]
+          className={`w-full py-5 rounded-3xl font-bold text-xl transition-all shadow-xl active:scale-[0.96] flex items-center justify-center gap-2
             ${(!amount || !description || isCompressing || !isSumValid || isScanning) 
               ? 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none' 
               : 'bg-stone-800 text-stone-50 hover:bg-stone-700'}
           `}
         >
-          {isScanning ? 'AI 分析中...' : (editingExpense ? '確認更新' : '新增帳務')}
+          {isScanning ? (
+            <>
+              <Loader2 className="animate-spin" size={24} />
+              <span>AI 正在努力分析...</span>
+            </>
+          ) : (
+            <span>{editingExpense ? '確認並更新帳務' : '完成並新增帳務'}</span>
+          )}
         </button>
       </div>
 
       {/* 圖片大圖檢視 */}
       {viewerIndex !== null && (
         <div className="fixed inset-0 z-[60] bg-stone-900/95 flex flex-col items-center justify-center p-4" onClick={() => setViewerIndex(null)}>
-          <button className="absolute top-8 right-8 z-[70] p-4 bg-white/10 rounded-full text-white"><X size={28} /></button>
+          <button className="absolute top-8 right-8 z-[70] p-4 bg-white/10 rounded-full text-white active:scale-90"><X size={28} /></button>
           <div className="relative max-w-full max-h-[85vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
             <img src={receiptImages[viewerIndex]} alt="Receipt Preview" className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" />
           </div>
