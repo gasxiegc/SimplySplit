@@ -33,6 +33,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
   const [quotaReached, setQuotaReached] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [isAIScanPending, setIsAIScanPending] = useState(false);
   
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,24 +75,12 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
     }
   }, [amount, splitMode, project.members.length]);
 
-  const handleAIScan = async () => {
-    if (receiptImages.length === 0) {
-      fileInputRef.current?.click();
-      return;
-    }
-
+  const runAIScan = async (base64Data: string, mimeType: string) => {
     setIsScanning(true);
     setQuotaReached(false);
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      // Use original image if available, otherwise fallback to compressed
-      const targetImage = originalImages[receiptImages.length - 1] || receiptImages[receiptImages.length - 1];
-      if (!targetImage) return;
-
-      const mimeType = targetImage.split(';')[0].split(':')[1] || 'image/jpeg';
-      const base64Data = targetImage.split(',')[1];
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -154,6 +143,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
       if (result.items && Array.isArray(result.items)) {
         setNotes(result.items.join('\n'));
       }
+      return true;
     } catch (error: any) {
       console.error("AI Scan failed:", error);
       if (error.message?.includes('429')) {
@@ -162,9 +152,27 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
       } else {
         alert("辨識失敗。請確保收據清晰。");
       }
+      return false;
     } finally {
       setIsScanning(false);
     }
+  };
+
+  const handleAIScan = async () => {
+    if (receiptImages.length === 0) {
+      setIsAIScanPending(true);
+      fileInputRef.current?.click();
+      return;
+    }
+
+    // Use original image if available, otherwise fallback to compressed
+    const targetImage = originalImages[receiptImages.length - 1] || receiptImages[receiptImages.length - 1];
+    if (!targetImage) return;
+
+    const mimeType = targetImage.split(';')[0].split(':')[1] || 'image/jpeg';
+    const base64Data = targetImage.split(',')[1];
+    
+    await runAIScan(base64Data, mimeType);
   };
 
   const handleCustomAmountChange = (userId: string, newValueStr: string) => {
@@ -219,10 +227,36 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
+      const fileArray = Array.from(files);
+      
+      if (isAIScanPending) {
+        setIsAIScanPending(false);
+        const file = fileArray[0];
+        const originalBase64 = await fileToBase64(file);
+        const mimeType = file.type || 'image/jpeg';
+        
+        const success = await runAIScan(originalBase64.split(',')[1], mimeType);
+        
+        if (success) {
+          // If AI success, compress and save
+          setIsCompressing(true);
+          try {
+            const compressed = await compressImage(file, 1200, 0.7);
+            setReceiptImages(prev => [...prev, compressed]);
+            setOriginalImages(prev => [...prev, originalBase64]);
+          } catch (err) {
+            console.error("Compression failed", err);
+          } finally {
+            setIsCompressing(false);
+          }
+        }
+        // If failure, image is not added to state (discarded)
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
       setIsCompressing(true);
       try {
-        const fileArray = Array.from(files);
-        
         // 1. Get original base64 for AI (high quality)
         const originalPromises = fileArray.map(file => fileToBase64(file));
         const newOriginals = await Promise.all(originalPromises);
