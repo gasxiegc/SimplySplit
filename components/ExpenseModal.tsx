@@ -4,7 +4,7 @@ import { CATEGORIES } from '../constants';
 import Avatar from './ui/Avatar';
 import * as LucideIcons from 'lucide-react';
 import { Camera, X, Calendar, Plus, ChevronLeft, ChevronRight, AlertCircle, Sparkles, Loader2, StickyNote } from 'lucide-react';
-import { compressImage } from '../utils/imageUtils';
+import { compressImage, fileToBase64 } from '../utils/imageUtils';
 import { GoogleGenAI, Type } from "@google/genai";
 
 interface ExpenseModalProps {
@@ -24,6 +24,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
   const [customAmounts, setCustomAmounts] = useState<{[key: string]: string}>({});
   const [date, setDate] = useState(Date.now());
   const [receiptImages, setReceiptImages] = useState<string[]>([]);
+  const [originalImages, setOriginalImages] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [touchedSplits, setTouchedSplits] = useState<Set<string>>(new Set());
   const [isCompressing, setIsCompressing] = useState(false);
@@ -47,6 +48,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
       setSplitMode(editingExpense.splitMode);
       setDate(editingExpense.date);
       setReceiptImages(editingExpense.receiptImages || []);
+      setOriginalImages(editingExpense.receiptImages || []); // Fallback to compressed if original not available
       setNotes(editingExpense.notes || '');
 
       if (editingExpense.splitMode === 'custom') {
@@ -79,8 +81,14 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
     setQuotaReached(false);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const lastImageBase64 = receiptImages[receiptImages.length - 1].split(',')[1];
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      // Use original image if available, otherwise fallback to compressed
+      const targetImage = originalImages[receiptImages.length - 1] || receiptImages[receiptImages.length - 1];
+      if (!targetImage) return;
+
+      const mimeType = targetImage.split(';')[0].split(':')[1] || 'image/jpeg';
+      const base64Data = targetImage.split(',')[1];
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -89,8 +97,8 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
             parts: [
               {
                 inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: lastImageBase64,
+                  mimeType: mimeType,
+                  data: base64Data,
                 },
               },
               {
@@ -210,11 +218,19 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
     if (files && files.length > 0) {
       setIsCompressing(true);
       try {
-        const uploadPromises = Array.from(files).map((file: File) => compressImage(file, 1200, 0.7));
-        const newImages = await Promise.all(uploadPromises);
-        setReceiptImages(prev => [...prev, ...newImages]);
+        const fileArray = Array.from(files);
+        
+        // 1. Get original base64 for AI (high quality)
+        const originalPromises = fileArray.map(file => fileToBase64(file));
+        const newOriginals = await Promise.all(originalPromises);
+        setOriginalImages(prev => [...prev, ...newOriginals]);
+
+        // 2. Get compressed versions for preview/storage (low quality)
+        const compressPromises = fileArray.map((file: File) => compressImage(file, 1200, 0.7));
+        const newCompressed = await Promise.all(compressPromises);
+        setReceiptImages(prev => [...prev, ...newCompressed]);
       } catch (err) {
-        console.error("Compression failed", err);
+        console.error("Image processing failed", err);
       } finally {
         setIsCompressing(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -225,6 +241,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
   const removeImage = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
     setReceiptImages(prev => prev.filter((_, i) => i !== index));
+    setOriginalImages(prev => prev.filter((_, i) => i !== index));
     if (viewerIndex === index) setViewerIndex(null);
   };
 
