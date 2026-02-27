@@ -6,6 +6,7 @@ import * as LucideIcons from 'lucide-react';
 import { Camera, X, Calendar, Plus, ChevronLeft, ChevronRight, AlertCircle, Sparkles, Loader2, StickyNote } from 'lucide-react';
 import { compressImage, fileToBase64 } from '../utils/imageUtils';
 import { GoogleGenAI, Type } from "@google/genai";
+import NumericCalculator from './ui/NumericCalculator';
 
 interface ExpenseModalProps {
   project: Project;
@@ -30,6 +31,8 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
   const [isCompressing, setIsCompressing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [quotaReached, setQuotaReached] = useState(false);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,18 +255,42 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
       {/* 總金額 - 顯著字體 */}
       <div className="flex flex-col items-center justify-center py-2">
         <label className="text-stone-500 text-xs mb-2 font-bold uppercase tracking-widest">總金額</label>
-        <div className="relative">
+        <div 
+          className="relative cursor-pointer active:scale-95 transition-transform"
+          onClick={() => setIsCalculatorOpen(true)}
+        >
           <span className="absolute left-[-1.5rem] top-1.5 text-2xl text-stone-400 font-serif">{project.currency === 'JPY' ? '¥' : '$'}</span>
-          <input
-            type="number"
-            value={amountStr}
-            onChange={(e) => setAmountStr(e.target.value)}
-            placeholder="0"
-            className="text-5xl font-serif text-stone-800 bg-transparent text-center w-44 focus:outline-none placeholder-stone-200"
-            autoFocus={!editingExpense}
-          />
+          <div className={`text-5xl font-serif text-stone-800 text-center min-w-[11rem] border-b-2 border-dashed border-stone-200 pb-1 ${!amountStr ? 'text-stone-200' : ''}`}>
+            {amountStr || '0'}
+          </div>
         </div>
       </div>
+
+      {isCalculatorOpen && (
+        <NumericCalculator
+          initialValue={amountStr}
+          currency={project.currency}
+          title="輸入總金額"
+          onConfirm={(val) => {
+            setAmountStr(val);
+            setIsCalculatorOpen(false);
+          }}
+          onClose={() => setIsCalculatorOpen(false)}
+        />
+      )}
+
+      {editingMemberId && (
+        <NumericCalculator
+          initialValue={customAmounts[editingMemberId] || '0'}
+          currency={project.currency}
+          title={`輸入 ${project.members.find(m => m.id === editingMemberId)?.name || '成員'} 的分帳金額`}
+          onConfirm={(val) => {
+            handleCustomAmountChange(editingMemberId, val);
+            setEditingMemberId(null);
+          }}
+          onClose={() => setEditingMemberId(null)}
+        />
+      )}
 
       <div className="space-y-4">
         {/* 名稱與功能按鈕 */}
@@ -386,15 +413,14 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
                 {splitMode === 'equal' ? (
                   <span className="text-xs font-serif text-stone-400">{(amount / project.members.length).toFixed(0)}</span>
                 ) : (
-                  <div className={`flex items-center gap-1 border-b ${isOverflow ? 'border-red-400 text-red-500' : 'border-stone-300 text-stone-800'}`}>
+                  <div 
+                    className={`flex items-center gap-1 border-b cursor-pointer active:scale-95 transition-transform ${isOverflow ? 'border-red-400 text-red-500' : 'border-stone-300 text-stone-800'}`}
+                    onClick={() => setEditingMemberId(member.id)}
+                  >
                     <span className="text-[10px] text-stone-400 font-bold">{project.currency === 'JPY' ? '¥' : '$'}</span>
-                    <input
-                      type="number"
-                      value={customAmounts[member.id] || ''}
-                      onChange={(e) => handleCustomAmountChange(member.id, e.target.value)}
-                      className="w-14 text-right bg-transparent focus:outline-none font-serif text-sm font-bold"
-                      placeholder="0"
-                    />
+                    <div className="w-14 text-right bg-transparent font-serif text-sm font-bold">
+                      {customAmounts[member.id] || '0'}
+                    </div>
                   </div>
                 )}
               </div>
