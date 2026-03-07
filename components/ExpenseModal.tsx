@@ -80,7 +80,12 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
     setQuotaReached(false);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+        throw new Error("系統未偵測到 API Key。如果您是自行部署（如 Vercel），請確保已在環境變數中設定 GEMINI_API_KEY。");
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -146,11 +151,15 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
       return true;
     } catch (error: any) {
       console.error("AI Scan failed:", error);
-      if (error.message?.includes('429')) {
+      const errorMessage = error.message || "未知錯誤";
+      
+      if (errorMessage.includes('429')) {
         setQuotaReached(true);
         alert("目前的 AI 免費額度已達上限，請稍候再試。");
+      } else if (errorMessage.includes('API Key')) {
+        alert(`API Key 錯誤: ${errorMessage}`);
       } else {
-        alert("辨識失敗。請確保收據清晰。");
+        alert(`辨識失敗: ${errorMessage}\n請確保收據清晰並重試。`);
       }
       return false;
     } finally {
