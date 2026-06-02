@@ -4,13 +4,14 @@ import { CATEGORIES } from '../constants';
 import Avatar from './ui/Avatar';
 import * as LucideIcons from 'lucide-react';
 import { Camera, X, Calendar, Plus, ChevronLeft, ChevronRight, AlertCircle, Sparkles, Loader2, StickyNote } from 'lucide-react';
-import { compressImage, fileToBase64 } from '../utils/imageUtils';
+import { compressImage, fileToBase64, dataURLtoBlob } from '../utils/imageUtils';
+import { DataService } from '../services/dataService';
 import { GoogleGenAI, Type } from "@google/genai";
 import NumericCalculator from './ui/NumericCalculator';
 
 interface ExpenseModalProps {
   project: Project;
-  onSave: (amount: number, description: string, payerId: string, splits: { userId: string, amount: number }[], category: string, date: number, receiptImages?: string[], id?: string, customCategory?: string, notes?: string) => void;
+  onSave: (amount: number, description: string, payerId: string, splits: { userId: string, amount: number }[], category: string, date: number, receiptImages?: string[], id?: string, customCategory?: string, notes?: string, splitMode?: SplitMode) => void;
   onClose: () => void;
   editingExpense?: Expense | null;
 }
@@ -18,7 +19,7 @@ interface ExpenseModalProps {
 const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, editingExpense }) => {
   const [amountStr, setAmountStr] = useState('');
   const [description, setDescription] = useState('');
-  const [payerId, setPayerId] = useState(project.members[0]?.id || '');
+  const [payerId, setPayerId] = useState('');
   const [category, setCategory] = useState('food');
   const [customCategory, setCustomCategory] = useState('');
   const [splitMode, setSplitMode] = useState<SplitMode>('equal');
@@ -62,18 +63,9 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
       }
     } else {
         setDate(Date.now());
+        setPayerId(''); // Ensure blank default for new expenses
     }
   }, [editingExpense]);
-
-  useEffect(() => {
-    if (splitMode === 'equal') {
-       const equalShare = amount / project.members.length;
-       const newMap: any = {};
-       project.members.forEach(m => newMap[m.id] = equalShare.toFixed(0));
-       setCustomAmounts(newMap);
-       setTouchedSplits(new Set());
-    }
-  }, [amount, splitMode, project.members.length]);
 
   const runAIScan = async (base64Data: string, mimeType: string) => {
     setIsScanning(true);
@@ -224,12 +216,23 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
   const isSumValid = splitMode === 'equal' || Math.abs(getSplitsSum() - amount) < 1;
 
   const handleSave = () => {
-    if (!amount || !description || !isSumValid) return;
-    const splits = project.members.map(m => ({
-        userId: m.id,
-        amount: parseFloat(customAmounts[m.id]) || 0
-    }));
-    onSave(amount, description, payerId, splits, category, date, receiptImages, editingExpense?.id, customCategory, notes);
+    if (!amount || !description || !payerId || !isSumValid) return;
+    const splits = project.members.map((m, index) => {
+      if (splitMode === 'equal') {
+        const equalShare = Math.floor(amount / project.members.length);
+        if (index === project.members.length - 1) {
+          const totalDistributed = equalShare * (project.members.length - 1);
+          return { userId: m.id, amount: Math.max(0, amount - totalDistributed) };
+        }
+        return { userId: m.id, amount: equalShare };
+      } else {
+        return {
+          userId: m.id,
+          amount: parseFloat(customAmounts[m.id]) || 0
+        };
+      }
+    });
+    onSave(amount, description, payerId, splits, category, date, receiptImages, editingExpense?.id, customCategory, notes, splitMode);
     onClose();
   };
 
@@ -247,36 +250,44 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
         const success = await runAIScan(originalBase64.split(',')[1], mimeType);
         
         if (success) {
-          // If AI success, compress and save
           setIsCompressing(true);
           try {
             const compressed = await compressImage(file, 1200, 0.7);
-            setReceiptImages(prev => [...prev, compressed]);
+            const blob = dataURLtoBlob(compressed);
+            const publicUrl = await DataService.uploadImage(blob, 'receipt');
+
+            setReceiptImages(prev => [...prev, publicUrl]);
             setOriginalImages(prev => [...prev, originalBase64]);
-          } catch (err) {
-            console.error("Compression failed", err);
+          } catch (err: any) {
+            console.error("Storage upload failed", err);
+            alert(`儲存圖片至雲端失敗！如果您是第一次啟用此功能，請先確保已在 Supabase Dashboard 中建立一個名為 'receipts' 的 Public 儲存庫 (Bucket) 並開通讀寫政策 (Policy)。\n錯誤原因: ${err.message}`);
           } finally {
             setIsCompressing(false);
           }
         }
-        // If failure, image is not added to state (discarded)
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
       setIsCompressing(true);
       try {
-        // 1. Get original base64 for AI (high quality)
+        // 1. Get original base64 for AI (high quality in-memory cache)
         const originalPromises = fileArray.map(file => fileToBase64(file));
         const newOriginals = await Promise.all(originalPromises);
         setOriginalImages(prev => [...prev, ...newOriginals]);
 
-        // 2. Get compressed versions for preview/storage (low quality)
-        const compressPromises = fileArray.map((file: File) => compressImage(file, 1200, 0.7));
-        const newCompressed = await Promise.all(compressPromises);
-        setReceiptImages(prev => [...prev, ...newCompressed]);
-      } catch (err) {
-        console.error("Image processing failed", err);
+        // 2. Compress other images and upload to Supabase Storage directly
+        const uploadPromises = fileArray.map(async (file: File) => {
+          const compressed = await compressImage(file, 1200, 0.7);
+          const blob = dataURLtoBlob(compressed);
+          return DataService.uploadImage(blob, 'receipt');
+        });
+
+        const publicUrls = await Promise.all(uploadPromises);
+        setReceiptImages(prev => [...prev, ...publicUrls]);
+      } catch (err: any) {
+        console.error("Image processing or upload failed", err);
+        alert(`上傳圖片到雲端失敗！如果您是第一次啟用此功能，請先確保已在 Supabase Dashboard 中建立一個名為 'receipts' 的 Public 儲存庫 (Bucket) 並開通讀寫政策 (Policy)。\n錯誤原因: ${err.message}`);
       } finally {
         setIsCompressing(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -421,7 +432,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
 
       {/* 付款人 */}
       <div>
-        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-3 block">誰付款</label>
+        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-3 block">誰付款 <span className="text-red-500 font-normal text-[10px] ml-1">(*必填)</span></label>
         <div className="flex gap-4 overflow-x-auto pb-1 no-scrollbar">
           {project.members.map(member => (
             <div key={member.id} className="flex flex-col items-center gap-2 min-w-[56px]">
@@ -438,7 +449,21 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
           <label className="text-xs font-bold text-stone-400 uppercase tracking-widest">分帳對象</label>
           <div className="flex bg-stone-100 rounded-xl p-1 border border-stone-200/50">
             <button onClick={() => setSplitMode('equal')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${splitMode === 'equal' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400'}`}>平分</button>
-            <button onClick={() => setSplitMode('custom')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${splitMode === 'custom' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400'}`}>自訂</button>
+            <button 
+              onClick={() => {
+                setSplitMode('custom');
+                const hasCustomValues = Object.values(customAmounts).some(v => parseFloat(v) > 0);
+                if (!hasCustomValues && amount > 0) {
+                  const equalShare = amount / project.members.length;
+                  const newMap: any = {};
+                  project.members.forEach(m => newMap[m.id] = equalShare.toFixed(0));
+                  setCustomAmounts(newMap);
+                }
+              }} 
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${splitMode === 'custom' ? 'bg-white shadow-sm text-stone-800' : 'text-stone-400'}`}
+            >
+              自訂
+            </button>
           </div>
         </div>
 
@@ -494,9 +519,9 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({ project, onClose, onSave, e
 
         <button
           onClick={handleSave}
-          disabled={!amount || !description || isCompressing || !isSumValid || isScanning}
+          disabled={!amount || !description || !payerId || isCompressing || !isSumValid || isScanning}
           className={`w-full py-5 rounded-3xl font-bold text-xl transition-all shadow-xl active:scale-[0.96] flex items-center justify-center gap-2
-            ${(!amount || !description || isCompressing || !isSumValid || isScanning) 
+            ${(!amount || !description || !payerId || isCompressing || !isSumValid || isScanning) 
               ? 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none' 
               : 'bg-stone-800 text-stone-50 hover:bg-stone-700'}
           `}

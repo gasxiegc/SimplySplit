@@ -278,5 +278,28 @@ export const DataService = {
 
   setTheme: (theme: string) => {
     localStorage.setItem(USER_PREF_KEY + '_theme', theme);
+  },
+
+  uploadImage: async (blob: Blob, prefix: string): Promise<string> => {
+    const fileExt = blob.type.split('/')[1] || 'jpeg';
+    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from('receipts')
+      .upload(fileName, blob, {
+        contentType: blob.type,
+        upsert: true
+      });
+
+    if (error) {
+      console.error("Storage upload error:", error);
+      throw error;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('receipts')
+      .getPublicUrl(fileName);
+
+    return publicUrlData.publicUrl;
   }
 };
