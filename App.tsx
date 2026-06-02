@@ -192,10 +192,29 @@ const App: React.FC = () => {
     setLoading(false);
   };
 
+  const handleSelectProject = async (p: Project) => {
+    setCurrentProject(p);
+    setView('dashboard');
+    try {
+      const cleaned = await DataService.cleanProjectLegacyImages(p);
+      if (cleaned && cleaned.id === p.id) {
+        setCurrentProject(cleaned);
+        setProjects(prev => prev.map(proj => proj.id === cleaned.id ? cleaned : proj));
+      }
+    } catch (e) {
+      console.error("Background auto-clean of legacy base64 images failed:", e);
+    }
+  };
+
   const handleUpdateProject = async (updated: Project) => {
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (currentProject?.id === updated.id) setCurrentProject(updated);
-    await DataService.updateProject(updated);
+    try {
+      await DataService.updateProject(updated);
+    } catch (err: any) {
+      console.error("Failed to update project in cloud:", err);
+      alert(`雲端同步失敗！請確認您的網路連線或 Supabase 設定。\n錯誤訊息: ${err.message || err.details || JSON.stringify(err)}`);
+    }
   };
 
   const handleDeleteProject = async (id: string) => {
@@ -304,9 +323,15 @@ const App: React.FC = () => {
 
     const updatedProject = { ...currentProject, expenses: updatedExpenses };
     setCurrentProject(updatedProject);
-    await DataService.updateProject(updatedProject);
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
     setEditingExpense(null);
+
+    try {
+      await DataService.updateProject(updatedProject);
+    } catch (err: any) {
+      console.error("Failed to save expense to cloud:", err);
+      alert(`雲端同步失敗！請確認您的網路連線或 Supabase 設定。\n錯誤說明: ${err.message || err.details || JSON.stringify(err)}`);
+    }
   };
 
   const handleDeleteExpense = async (id: string) => {
@@ -316,8 +341,14 @@ const App: React.FC = () => {
       expenses: currentProject.expenses.filter(e => e.id !== id)
     };
     setCurrentProject(updatedProject);
-    await DataService.updateProject(updatedProject);
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+
+    try {
+      await DataService.updateProject(updatedProject);
+    } catch (err: any) {
+      console.error("Failed to delete expense in cloud:", err);
+      alert(`雲端刪除失敗！\n錯誤說明: ${err.message || err.details || JSON.stringify(err)}`);
+    }
   };
 
   const ShareOptions = ({ project }: { project: Project }) => {
@@ -381,7 +412,7 @@ const App: React.FC = () => {
     return (
       <ProjectList 
         projects={projects} 
-        onSelectProject={(p) => { setCurrentProject(p); setView('dashboard'); }}
+        onSelectProject={handleSelectProject}
         onCreateProject={handleCreateProject}
         onUpdateProject={handleUpdateProject}
         onDeleteProject={handleDeleteProject}

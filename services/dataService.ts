@@ -1,6 +1,7 @@
 
 import { Project, User } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { dataURLtoBlob } from '../utils/imageUtils';
 
 const CURRENT_USER_EMAIL_KEY = 'simplesplit_current_user_email';
 const USER_PREF_KEY = 'simplesplit_user_pref';
@@ -172,7 +173,10 @@ export const DataService = {
         updated_at: new Date().toISOString()
       });
 
-    if (error) console.error("Save project error:", error);
+    if (error) {
+      console.error("Save project error:", error);
+      throw error;
+    }
   },
 
   deleteProject: async (projectId: string): Promise<void> => {
@@ -301,5 +305,49 @@ export const DataService = {
       .getPublicUrl(fileName);
 
     return publicUrlData.publicUrl;
+  },
+
+  cleanProjectLegacyImages: async (project: Project): Promise<Project> => {
+    let changed = false;
+    if (!project || !project.expenses) return project;
+
+    const cleanedExpenses = await Promise.all(
+      project.expenses.map(async (expense) => {
+        if (!expense.receiptImages || expense.receiptImages.length === 0) {
+          return expense;
+        }
+
+        const cleanedUrls = await Promise.all(
+          expense.receiptImages.map(async (url) => {
+            // Check if it is a legacy base64 data URL
+            if (url && url.startsWith('data:')) {
+              try {
+                const blob = dataURLtoBlob(url);
+                const publicUrl = await DataService.uploadImage(blob, 'receipt');
+                changed = true;
+                return publicUrl;
+              } catch (e) {
+                console.error("Failed to migrate base64 image:", e);
+                return url; // Keep base64 as fallback if upload fails
+              }
+            }
+            return url;
+          })
+        );
+
+        return {
+          ...expense,
+          receiptImages: cleanedUrls
+        };
+      })
+    );
+
+    if (changed) {
+      const updatedProject = { ...project, expenses: cleanedExpenses };
+      await DataService.updateProject(updatedProject);
+      return updatedProject;
+    }
+
+    return project;
   }
 };
